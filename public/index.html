@@ -647,24 +647,75 @@ function parseAPIJson(data) {
 // ════════════════════════════════════════════════════════════
 // Authenticated fetch
 // ════════════════════════════════════════════════════════════
+// SSE 스트림을 읽어 Anthropic 응답 텍스트를 완전히 조립한 뒤
+// 기존 parseAPIJson()이 소비하는 { stop_reason, content } 형태로 반환
 async function apiFetch(url, body) {
     const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
         body: JSON.stringify(body)
     });
+
+    // 인증 오류
     if (res.status === 401) {
         sessionStorage.removeItem('access_token');
         showGate();
         throw new Error('세션이 만료되었습니다. 다시 로그인해주세요.');
     }
+
+    // 4xx / 5xx — JSON 오류 응답
     if (!res.ok) {
         const e = await res.json().catch(() => ({}));
         const msg = e.error?.message || e.error || `HTTP ${res.status}`;
         if (res.status === 429) throw new Error('요청 한도 초과(429): 잠시 후 다시 시도해주세요.');
         throw new Error(msg);
     }
-    return res.json();
+
+    // SSE 스트림 읽기 (text/event-stream)
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('event-stream')) {
+        // 혹시 스트리밍이 아닌 경우 그냥 json으로 처리
+        return res.json();
+    }
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText    = '';
+    let stop_reason = 'end_turn';
+    let buf = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+
+        // SSE는 \n\n 으로 이벤트를 구분
+        const parts = buf.split('\n\n');
+        buf = parts.pop(); // 마지막 불완전 조각은 다음 루프로
+
+        for (const part of parts) {
+            for (const line of part.split('\n')) {
+                if (!line.startsWith('data: ')) continue;
+                const payload = line.slice(6).trim();
+                if (payload === '[DONE]') continue;
+                try {
+                    const ev = JSON.parse(payload);
+                    if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+                        fullText += ev.delta.text;
+                    }
+                    if (ev.type === 'message_delta' && ev.delta?.stop_reason) {
+                        stop_reason = ev.delta.stop_reason;
+                    }
+                } catch (_) {}
+            }
+        }
+    }
+
+    // parseAPIJson() 이 기대하는 구조로 래핑해서 반환
+    return {
+        stop_reason,
+        content: [{ type: 'text', text: fullText }]
+    };
 }
 
 // ════════════════════════════════════════════════════════════
