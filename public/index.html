@@ -237,6 +237,15 @@
         .fade-in { animation:fadeIn .35s ease; }
         @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 
+        /* ── KDB ── */
+        .kdb-doc-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:6px; background:#fafbff; }
+        .kdb-doc-name { font-size:13px; font-weight:600; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .kdb-doc-meta { font-size:11px; color:var(--muted); white-space:nowrap; flex-shrink:0; }
+        .kdb-doc-del { background:none; border:none; color:var(--danger); cursor:pointer; font-size:18px; padding:2px 6px; border-radius:4px; line-height:1; flex-shrink:0; }
+        .kdb-doc-del:hover { background:#fee2e2; }
+        .kdb-empty { text-align:center; color:var(--muted); font-size:13px; padding:18px 0; line-height:1.8; }
+        .kdb-ref-banner { display:flex; align-items:center; gap:6px; background:#ede9fe; border:1px solid #c4b5fd; border-radius:var(--radius-sm); padding:8px 12px; margin-bottom:10px; font-size:12px; color:#5b21b6; }
+
         /* ── Print ── */
         @media print {
             #passwordGate { display:none!important; }
@@ -338,8 +347,26 @@
             <div class="pdf-actions">
                 <button class="pdf-select-all" onclick="toggleSelectAll()">전체 선택/해제</button>
                 <div style="flex:1;"></div>
+                <button class="btn btn-sm btn-outline" style="border-color:#7c3aed;color:#7c3aed;" onclick="savePDFToKDB()">🗄️ 약관 DB 저장</button>
                 <button class="btn btn-success btn-sm" onclick="applyPDFRiders()">✓ 선택한 특약 폼에 적용</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ① 약관 지식 DB -->
+    <div class="card" id="kdbCard">
+        <div class="card-title" style="flex-wrap:wrap;gap:8px;">
+            🗄️ 약관 지식 DB <span class="badge" id="kdbBadge">0개</span>
+            <div style="flex:1;"></div>
+            <button class="btn btn-outline btn-sm" style="border-color:#7c3aed;color:#7c3aed;" onclick="document.getElementById('kdbFileInput').click()">+ 약관 PDF 추가</button>
+            <input type="file" id="kdbFileInput" accept=".pdf" style="display:none" onchange="handleKDBUpload(this.files[0])">
+        </div>
+        <div id="kdbList">
+            <div class="kdb-empty">저장된 약관이 없습니다.<br><span style="font-size:12px;">약관 PDF를 추가하면 보장 분석 시 자동으로 참조합니다.</span></div>
+        </div>
+        <div id="kdbProgress" style="display:none;" class="pdf-progress">
+            <div class="pdf-progress-text" id="kdbProgressText"></div>
+            <div class="pdf-progress-bar-wrap"><div class="pdf-progress-bar" id="kdbProgressBar" style="width:0%"></div></div>
         </div>
     </div>
 
@@ -432,6 +459,7 @@ if (typeof pdfjsLib !== 'undefined') {
 // ════════════════════════════════════════════════════════════
 let hasSurg = false, hasHosp = false, riderSeq = 0;
 let pdfExtracted = null;
+let rawPDFText   = null;
 
 // ════════════════════════════════════════════════════════════
 // Auth
@@ -645,6 +673,135 @@ function parseAPIJson(data) {
 }
 
 // ════════════════════════════════════════════════════════════
+// 약관 지식 DB (IndexedDB 기반 로컬 RAG)
+// ════════════════════════════════════════════════════════════
+const KDB = (() => {
+    const DB_NAME  = 'InsuranceKDB';
+    const VERSION  = 1;
+    const CHUNK_ST = 'chunks';
+    const DOC_ST   = 'documents';
+    let _db = null;
+
+    function openDB() {
+        if (_db) return Promise.resolve(_db);
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(DB_NAME, VERSION);
+            req.onupgradeneeded = e => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(DOC_ST))
+                    db.createObjectStore(DOC_ST, { keyPath: 'id' });
+                if (!db.objectStoreNames.contains(CHUNK_ST)) {
+                    const cs = db.createObjectStore(CHUNK_ST, { keyPath: 'id', autoIncrement: true });
+                    cs.createIndex('docId', 'docId', { unique: false });
+                }
+            };
+            req.onsuccess = e => { _db = e.target.result; resolve(_db); };
+            req.onerror   = e => reject(e.target.error);
+        });
+    }
+
+    // 문단·조항 경계로 청크 분할, 오버랩 포함
+    function chunkText(text, size = 400, overlap = 80) {
+        const paras = text.split(/\n{2,}|\n(?=제\s*\d+조|[①-⑩○●]|\d+\.\s)/)
+                          .map(p => p.trim()).filter(p => p.length > 20);
+        const chunks = [];
+        let buf = '';
+        for (const para of paras) {
+            if (buf && (buf + '\n' + para).length > size) {
+                chunks.push(buf.trim());
+                buf = buf.length > overlap ? buf.slice(-overlap) + '\n' + para : para;
+            } else {
+                buf = buf ? buf + '\n' + para : para;
+            }
+        }
+        if (buf.trim().length >= 40) chunks.push(buf.trim());
+        return chunks;
+    }
+
+    // 한글 어절 + 2-gram 토크나이징
+    function tokenize(text) {
+        const tokens = new Set();
+        text.split(/[\s\n,.·\-\(\)「」【】\[\]\/]+/)
+            .filter(w => w.length >= 2).forEach(w => tokens.add(w));
+        const han = text.replace(/[^가-힣]/g, '');
+        for (let i = 0; i < han.length - 1; i++) tokens.add(han.slice(i, i + 2));
+        return tokens;
+    }
+
+    function idbGetAll(store) {
+        return new Promise((res, rej) => {
+            const req = _db.transaction(store, 'readonly').objectStore(store).getAll();
+            req.onsuccess = e => res(e.target.result);
+            req.onerror   = e => rej(e.target.error);
+        });
+    }
+    function idbPut(store, data) {
+        return new Promise((res, rej) => {
+            const req = _db.transaction(store, 'readwrite').objectStore(store).put(data);
+            req.onsuccess = e => res(e.target.result);
+            req.onerror   = e => rej(e.target.error);
+        });
+    }
+
+    async function addDocument(id, name, fullText) {
+        await openDB();
+        await deleteDocument(id);
+        const chunks = chunkText(fullText);
+        await idbPut(DOC_ST, { id, name, chunkCount: chunks.length, addedAt: Date.now() });
+        const st = _db.transaction(CHUNK_ST, 'readwrite').objectStore(CHUNK_ST);
+        for (const [, text] of chunks.entries()) {
+            await new Promise((res, rej) => {
+                const r = st.add({ docId: id, docName: name, text, tokens: [...tokenize(text)] });
+                r.onsuccess = res; r.onerror = rej;
+            });
+        }
+        return chunks.length;
+    }
+
+    async function search(query, topK = 5) {
+        await openDB();
+        const all = await idbGetAll(CHUNK_ST);
+        if (!all.length) return [];
+        const qTok = tokenize(query);
+        if (!qTok.size) return [];
+        return all
+            .map(c => {
+                const cTok = new Set(c.tokens);
+                let hit = 0;
+                for (const t of qTok) if (cTok.has(t)) hit++;
+                return { ...c, score: hit / qTok.size };
+            })
+            .filter(c => c.score > 0.02)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, topK);
+    }
+
+    async function listDocuments() {
+        await openDB();
+        return idbGetAll(DOC_ST);
+    }
+
+    async function deleteDocument(id) {
+        await openDB();
+        await new Promise((res, rej) => {
+            const st = _db.transaction(CHUNK_ST, 'readwrite').objectStore(CHUNK_ST);
+            const req = st.index('docId').openCursor(IDBKeyRange.only(id));
+            req.onsuccess = e => {
+                const cur = e.target.result;
+                if (cur) { cur.delete(); cur.continue(); } else res();
+            };
+            req.onerror = rej;
+        });
+        await new Promise((res, rej) => {
+            const r = _db.transaction(DOC_ST, 'readwrite').objectStore(DOC_ST).delete(id);
+            r.onsuccess = res; r.onerror = rej;
+        });
+    }
+
+    return { addDocument, search, listDocuments, deleteDocument };
+})();
+
+// ════════════════════════════════════════════════════════════
 // Authenticated fetch
 async function apiFetch(url, body) {
     const res = await fetch(url, {
@@ -687,6 +844,7 @@ async function handlePDFFile(file) {
             setPDFProgress(true, `텍스트 추출 중… (${p}/${total}페이지)`, Math.round(10 + (p/total)*50));
         });
         if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.\n스캔 이미지 PDF는 지원되지 않습니다.');
+        rawPDFText = text;
         setPDFProgress(true, `AI 분석 중… (${pages}페이지, ${text.length.toLocaleString()}자)`, 65);
         const result = await extractRidersWithClaude(text);
         pdfExtracted = result;
@@ -786,9 +944,98 @@ function applyPDFRiders() {
 
 function resetPDF() {
     pdfExtracted = null;
+    rawPDFText   = null;
     document.getElementById('pdfResultWrap').style.display = 'none';
     setPDFProgress(false);
     document.getElementById('pdfFileInput').value = '';
+}
+
+// ════════════════════════════════════════════════════════════
+// 약관 DB UI
+// ════════════════════════════════════════════════════════════
+
+// 보험증권 PDF 추출 결과를 약관 DB에 저장
+async function savePDFToKDB() {
+    if (!rawPDFText) { toast('먼저 PDF를 업로드해주세요.'); return; }
+    const name = [pdfExtracted?.insurer, pdfExtracted?.product].filter(Boolean).join(' ') || '약관';
+    const id   = 'pdf_' + Date.now();
+    try {
+        const n = await KDB.addDocument(id, name, rawPDFText);
+        toast(`✓ "${name}" 약관 DB 저장 완료 (${n}개 섹션)`);
+        renderKDBList();
+    } catch (e) { toast('⚠ 저장 실패: ' + e.message); }
+}
+
+// 약관 전용 PDF 업로드 (청킹만, Claude 호출 없음)
+async function handleKDBUpload(file) {
+    if (!file || file.type !== 'application/pdf') { toast('PDF 파일만 가능합니다.'); return; }
+    document.getElementById('kdbFileInput').value = '';
+    const setP = (show, text = '', pct = 0) => {
+        document.getElementById('kdbProgress').style.display = show ? 'block' : 'none';
+        if (show) {
+            document.getElementById('kdbProgressText').textContent = text;
+            document.getElementById('kdbProgressBar').style.width  = pct + '%';
+        }
+    };
+    setP(true, 'PDF 읽는 중…', 10);
+    try {
+        const { text, pages } = await extractPDFText(file, (p, total) =>
+            setP(true, `텍스트 추출 중… (${p}/${total}페이지)`, Math.round(10 + p / total * 70))
+        );
+        if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
+        setP(true, 'DB에 저장 중…', 85);
+        const name = file.name.replace(/\.pdf$/i, '');
+        const id   = 'kdb_' + Date.now();
+        const n    = await KDB.addDocument(id, name, text);
+        setP(false);
+        toast(`✓ "${name}" 저장 완료 (${n}개 섹션, ${pages}페이지)`);
+        renderKDBList();
+    } catch (err) {
+        setP(false);
+        toast('⚠ ' + err.message.split('\n')[0]);
+    }
+}
+
+async function renderKDBList() {
+    try {
+        const docs  = await KDB.listDocuments();
+        const badge = document.getElementById('kdbBadge');
+        const list  = document.getElementById('kdbList');
+        badge.textContent = docs.length + '개';
+        if (!docs.length) {
+            list.innerHTML = '<div class="kdb-empty">저장된 약관이 없습니다.<br><span style="font-size:12px;">약관 PDF를 추가하면 보장 분석 시 자동으로 참조합니다.</span></div>';
+            return;
+        }
+        list.innerHTML = docs.map(d =>
+            `<div class="kdb-doc-item">
+                <div class="kdb-doc-name">📋 ${d.name}</div>
+                <div class="kdb-doc-meta">${d.chunkCount}섹션</div>
+                <button class="kdb-doc-del" onclick="deleteKDBDoc('${d.id}')" title="삭제">×</button>
+            </div>`
+        ).join('');
+    } catch(_) {}
+}
+
+async function deleteKDBDoc(id) {
+    if (!confirm('이 약관을 DB에서 삭제하시겠습니까?')) return;
+    await KDB.deleteDocument(id);
+    toast('삭제되었습니다.');
+    renderKDBList();
+}
+
+// 진단+특약명으로 DB 검색 → 프롬프트 주입용 컨텍스트 반환
+async function buildRAGContext(diagnosis, riders) {
+    try {
+        const query  = diagnosis + ' ' + riders.map(r => r.rider).join(' ');
+        const chunks = await KDB.search(query, 6);
+        if (!chunks.length) return { text: '', refs: [] };
+        const refs   = [...new Set(chunks.map(c => c.docName))];
+        const body   = chunks.slice(0, 4)
+            .map(c => `[${c.docName}]\n${c.text}`)
+            .join('\n\n---\n\n')
+            .slice(0, 1600);
+        return { text: `\n\n[참조 약관 (관련 섹션)]\n${body}`, refs };
+    } catch (_) { return { text: '', refs: [] }; }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -807,7 +1054,9 @@ async function analyze() {
     const surgText = hasSurg ? `수술 있음 / 수술명: ${document.getElementById('surgName').value.trim()||'미입력'}` : '수술 없음';
     const hospText = hasHosp ? `입원 / 입원일수: ${document.getElementById('hospDays').value||'미입력'}일` : '외래·통원 치료';
 
-    const userPrompt = `[기준일: ${today}]\n\n[보험 특약 정보]\n${riderLines}\n\n[진단·치료 정보]\n진단명/증상: ${diagnosis}\n수술: ${surgText}\n입원: ${hospText}\n기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}\n사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`;
+    const rag = await buildRAGContext(diagnosis, riders);
+
+    const userPrompt = `[기준일: ${today}]\n\n[보험 특약 정보]\n${riderLines}\n\n[진단·치료 정보]\n진단명/증상: ${diagnosis}\n수술: ${surgText}\n입원: ${hospText}\n기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}\n사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${rag.text}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`;
 
     const systemPrompt = `한국 손해보험 손해사정사. KCD-8 코드, 면책기간(암·뇌·심장 90일/일반 30~180일), 감액기간(1~2년 50%), 직접원인, 실손 자기부담금 기준 적용.
 순수 JSON만 반환 (코드블록 없이):
@@ -818,6 +1067,10 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나.`;
     btn.disabled = true; btn.textContent = '분석 중…';
     document.getElementById('loadingCard').style.display = 'block';
     document.getElementById('resultsSection').style.display = 'none';
+
+    if (rag.refs.length) {
+        document.getElementById('loadingStep').textContent = `약관 DB 참조 중: ${rag.refs.join(', ')}`;
+    }
 
     const steps = ['KCD 코드 분류 중…','약관 면책 조항 검토 중…','특약별 보장 요건 분석 중…','청구 가능 금액 계산 중…','고객 설명 멘트 생성 중…'];
     let si = 0;
@@ -830,7 +1083,7 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나.`;
             messages: [{ role:'user', content: userPrompt }]
         });
         clearInterval(stepTimer);
-        renderResults(parseAPIJson(data), riders);
+        renderResults(parseAPIJson(data), riders, rag.refs);
     } catch (err) {
         clearInterval(stepTimer);
         document.getElementById('resultsSection').innerHTML = `<div class="card"><div class="error-box"><strong>⚠️ 분석 오류</strong><br><br>${err.message}</div></div>`;
@@ -844,7 +1097,7 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나.`;
 // ════════════════════════════════════════════════════════════
 // Render Results
 // ════════════════════════════════════════════════════════════
-function renderResults(r, riderData) {
+function renderResults(r, riderData, ragRefs = []) {
     const now = new Date();
     const ts = `${now.getFullYear()}.${now.getMonth()+1}.${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
     const ras = r.rider_analysis||[];
@@ -866,8 +1119,12 @@ function renderResults(r, riderData) {
         return `<tr><td><div style="font-weight:600;">${ra.rider_name}</div><div style="font-size:11px;color:#94a3b8;">${[orig.insurer,orig.product].filter(Boolean).join(' / ')}</div></td><td><span class="status-badge ${sc}">${ra.coverage_status}</span></td><td><div class="amt">${ra.amount_description||fmtAmount(ra.final_amount)}</div>${ra.reduction_rate>0?`<div class="amt-note">감액 ${Math.round(ra.reduction_rate*100)}% 적용</div>`:''}</td><td class="rider-reason">${ra.reason||''}</td></tr>`;
     }).join('');
     const noteItems=(r.important_notes||[]).map(n=>`<li>${n}</li>`).join('');
+    const ragBanner = ragRefs.length
+        ? `<div class="kdb-ref-banner">🗄️ 약관 DB 참조: <strong>${ragRefs.join(', ')}</strong></div>`
+        : '';
     document.getElementById('resultsSection').innerHTML=`
     <div class="fade-in">
+        ${ragBanner}
         <div class="result-header">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
                 <div><h2>보장 분석 결과</h2><small>분석 시각: ${ts}</small></div>
@@ -923,6 +1180,7 @@ function resetAll() {
 function init() {
     addRider();
     checkAuth();
+    renderKDBList();
 }
 init();
 </script>
