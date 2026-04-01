@@ -1266,6 +1266,8 @@ function mergeUnitCells(cells) {
     for (let i = 0; i < cells.length; i++) {
         if (out.length > 0 && UNITS.includes(cells[i])) {
             out[out.length - 1] += cells[i];   // "3,000" + "만원" = "3,000만원"
+        } else if (out.length > 0 && /^,\d/.test(cells[i]) && /\d$/.test(out[out.length - 1])) {
+            out[out.length - 1] += cells[i];   // "10" + ",000" = "10,000" (5자리 숫자가 쉼표 위치에서 분리된 경우)
         } else {
             out.push(cells[i]);
         }
@@ -1284,8 +1286,9 @@ function extractTossProductSection(text) {
     }
     const rawBase = si !== -1 ? text.slice(si) : text;
 
-    // ① 텍스트 레벨 정규화: "숫자 만원", "숫자만 원", "숫자 | 만원" 패턴을 합체
+    // ① 텍스트 레벨 정규화: "숫자 만원", "숫자만 원", "숫자 | 만원", "10 | ,000" 패턴을 합체
     const base = rawBase
+        .replace(/(\d+)\s*\|\s*,(\d[\d]*)/g, '$1,$2')                               // "10 | ,000" → "10,000" (쉼표 위치에서 분리된 5자리 숫자)
         .replace(/(\d[\d,]*)\s*\|\s*(만원|천원|억원|백만원|원(?=\s|$|\|))/g, '$1$2') // "3,000 | 만원" → "3,000만원"
         .replace(/(\d[\d,]*)만\s+원/g, '$1만원')                                    // "3,000만 원" → "3,000만원"
         .replace(/(\d[\d,]*)\s+(만원|천원|억원|백만원)/g, '$1$2');                   // "3,000 만원" → "3,000만원"
