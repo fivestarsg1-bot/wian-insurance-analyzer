@@ -1251,15 +1251,60 @@ function setTossProgress(show, text = '', pct = 0) {
     }
 }
 
+// "상품별 보험 가입현황" 섹션을 찾아 추출 (2컬럼 레이아웃 보정 포함)
+function extractTossProductSection(text) {
+    // 섹션 시작 마커 탐색
+    const MARKERS = ['상품별 보험 가입현황', '보험 가입현황', '상품별 가입현황', '가입현황'];
+    let si = -1;
+    for (const m of MARKERS) {
+        const i = text.indexOf(m);
+        if (i !== -1 && (si === -1 || i < si)) si = i;
+    }
+    // 섹션 못 찾으면 전체 사용, 찾으면 해당 섹션부터
+    const base = si !== -1 ? text.slice(si) : text;
+
+    // 토스 리포트의 2컬럼 파이프 행을 두 행으로 분리
+    // 예: "암진단비 | 1,000만원 | 뇌졸중 | 500만원"
+    //  → "암진단비 | 1,000만원\n뇌졸중 | 500만원"
+    // 단, 단순 항목|금액 쌍(컬럼 2개)은 그대로 유지
+    const deduped = base.split('\n').map(line => {
+        const cells = line.split('|').map(s => s.trim()).filter(Boolean);
+        if (cells.length >= 4) {
+            // 짝수 셀이면 2개씩 쌍으로 나눔 (항목|금액 반복)
+            const pairs = [];
+            for (let i = 0; i < cells.length; i += 2) {
+                if (cells[i + 1] !== undefined) pairs.push(cells[i] + ' | ' + cells[i + 1]);
+                else pairs.push(cells[i]);
+            }
+            return pairs.join('\n');
+        }
+        return line;
+    }).join('\n');
+
+    // 토큰 한도 내에서 최대한 많이 유지 (앞부분 우선)
+    if (deduped.length <= 14000) return deduped;
+    // 너무 길면 앞 12000자 + 마지막 2000자
+    return deduped.slice(0, 12000) + '\n\n[...이하 생략...]\n\n' + deduped.slice(-2000);
+}
+
 async function extractTossReport(text) {
     const model   = localStorage.getItem('ai_model') || 'claude-sonnet-4-6';
-    const trimmed = text.length > 10000 ? text.slice(0, 7000) + '\n\n[...중략...]\n\n' + text.slice(-3000) : text;
-    const system  = `토스인슈어런스 보장분석 리포트에서 모든 보유 보험 데이터 추출. 순수 JSON만 반환 (코드블록·설명 없이):
-{"holder":"","policies":[{"insurer":"보험사명","product":"상품명","start_date":"YYYY-MM-DD","riders":[{"name":"보장항목명","amount":"보장금액"}]}],"note":""}
-규칙: 모든 보험사·상품·보장항목 빠짐없이 추출. 금액 없으면 "미확인". 날짜 없으면 빈 문자열.`;
+    const section = extractTossProductSection(text);
+
+    const system = `토스인슈어런스 "상품별 보험 가입현황" 텍스트에서 상품별 보장항목 추출.
+
+[파싱 규칙 — 반드시 준수]
+1. 상품 경계: 보험사명 + 상품명 헤더가 나올 때마다 새 상품으로 분리. 이전 상품 항목이 다음 상품에 절대 포함되지 않도록 할 것.
+2. 2컬럼 처리: "항목A | 금액A" 형식이 한 줄에 있으면 그대로 추출. "항목A | 금액A | 항목B | 금액B"처럼 이미 2행으로 분리된 경우도 각각 독립 항목으로 처리.
+3. 금액 추출: "3,000만원" "100만원" "일당 3만원" "연 200만원" "500만원" 등 숫자+단위가 보이면 반드시 추출. 진짜 금액이 없는 경우만 "미확인".
+4. 가입일: "가입일" "계약일" 뒤에 오는 날짜를 YYYY-MM-DD 형식으로.
+
+순수 JSON만 반환 (코드블록·설명 없이):
+{"holder":"","policies":[{"insurer":"보험사명","product":"상품명","start_date":"YYYY-MM-DD","riders":[{"name":"보장항목명","amount":"보장금액"}]}],"note":""}`;
+
     const data = await apiFetch('/api/messages', {
         model, max_tokens: 4096, system,
-        messages: [{ role: 'user', content: `토스 보장분석 리포트 PDF:\n\n${trimmed}` }]
+        messages: [{ role: 'user', content: `[토스 보장분석 리포트 — 상품별 보험 가입현황]\n\n${section}` }]
     });
     return parseAPIJson(data);
 }
