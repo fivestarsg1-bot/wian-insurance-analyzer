@@ -10,8 +10,7 @@ function readBody(req) {
     });
 }
 
-// Anthropic SSE 스트림을 그대로 클라이언트에 파이프
-function proxyStream(apiKey, bodyBuffer, res) {
+function proxyToAnthropic(apiKey, bodyBuffer, res) {
     const options = {
         hostname: 'api.anthropic.com',
         path:     '/v1/messages',
@@ -25,31 +24,12 @@ function proxyStream(apiKey, bodyBuffer, res) {
     };
 
     const upstream = https.request(options, upRes => {
-        // 오류 응답(4xx/5xx)은 JSON으로 그대로 반환
-        if (upRes.statusCode >= 400) {
-            let raw = '';
-            upRes.on('data', c => raw += c);
-            upRes.on('end', () => {
-                res.writeHead(upRes.statusCode, { 'Content-Type': 'application/json' });
-                res.end(raw);
-            });
-            return;
-        }
-
-        // 성공 응답: SSE 스트림을 그대로 파이프
-        res.writeHead(200, {
-            'Content-Type':  'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection':    'keep-alive',
-            'X-Accel-Buffering': 'no', // nginx 버퍼링 비활성화
-        });
+        res.writeHead(upRes.statusCode, { 'Content-Type': 'application/json' });
         upRes.pipe(res);
     });
 
     upstream.on('error', err => {
-        if (!res.headersSent) {
-            res.writeHead(502, { 'Content-Type': 'application/json' });
-        }
+        if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: { message: `프록시 오류: ${err.message}` } }));
     });
 
@@ -59,36 +39,33 @@ function proxyStream(apiKey, bodyBuffer, res) {
 
 module.exports = async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
 
     if (req.method !== 'POST') return res.status(405).end();
 
     // 1. 접속 토큰 검증
     const token = req.headers['x-access-token'];
     if (!validateToken(token)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.writeHead(401);
         return res.end(JSON.stringify({ error: { message: '인증이 필요합니다. 다시 로그인해주세요.' } }));
     }
 
     // 2. API 키 확인
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.writeHead(500);
         return res.end(JSON.stringify({ error: { message: 'ANTHROPIC_API_KEY 환경변수가 없습니다.' } }));
     }
 
-    // 3. 요청 바디에 stream: true 주입
+    // 3. Anthropic 프록시 (비스트리밍)
     try {
-        const raw = req.body !== undefined
+        const body = req.body !== undefined
             ? Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body))
             : await readBody(req);
 
-        const bodyObj = JSON.parse(raw.toString());
-        bodyObj.stream = true;                      // 스트리밍 강제 활성화
-        const bodyBuffer = Buffer.from(JSON.stringify(bodyObj));
-
-        proxyStream(apiKey, bodyBuffer, res);
+        proxyToAnthropic(apiKey, body, res);
     } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.writeHead(500);
         res.end(JSON.stringify({ error: { message: err.message } }));
     }
 };

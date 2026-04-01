@@ -36,7 +36,7 @@ function readBody(req) {
     });
 }
 
-// ─── Anthropic 스트리밍 프록시 ───────────────────────────────
+// ─── Anthropic 프록시 ────────────────────────────────────────
 function proxyToAnthropic(apiKey, bodyBuffer, res) {
     const options = {
         hostname: 'api.anthropic.com',
@@ -51,21 +51,7 @@ function proxyToAnthropic(apiKey, bodyBuffer, res) {
     };
 
     const upstream = https.request(options, upRes => {
-        if (upRes.statusCode >= 400) {
-            let raw = '';
-            upRes.on('data', c => raw += c);
-            upRes.on('end', () => {
-                res.writeHead(upRes.statusCode, { 'Content-Type': 'application/json' });
-                res.end(raw);
-            });
-            return;
-        }
-        res.writeHead(200, {
-            'Content-Type':      'text/event-stream',
-            'Cache-Control':     'no-cache',
-            'Connection':        'keep-alive',
-            'X-Accel-Buffering': 'no',
-        });
+        res.writeHead(upRes.statusCode, { 'Content-Type': 'application/json' });
         upRes.pipe(res);
     });
 
@@ -163,9 +149,7 @@ const server = http.createServer(async (req, res) => {
 
         try {
             const raw = await readBody(req);
-            const bodyObj = JSON.parse(raw.toString());
-            bodyObj.stream = true;
-            proxyToAnthropic(apiKey, Buffer.from(JSON.stringify(bodyObj)), res);
+            proxyToAnthropic(apiKey, raw, res);
         } catch (err) {
             res.writeHead(500);
             res.end(JSON.stringify({ error: { message: err.message } }));
