@@ -245,6 +245,11 @@
         .kdb-doc-del:hover { background:#fee2e2; }
         .kdb-empty { text-align:center; color:var(--muted); font-size:13px; padding:18px 0; line-height:1.8; }
         .kdb-ref-banner { display:flex; align-items:center; gap:6px; background:#ede9fe; border:1px solid #c4b5fd; border-radius:var(--radius-sm); padding:8px 12px; margin-bottom:10px; font-size:12px; color:#5b21b6; }
+        .surg-toggle-btn { font-size:12px; color:var(--muted); background:none; border:none; cursor:pointer; padding:2px 6px; font-family:inherit; }
+        .surg-table-empty { text-align:center; color:var(--muted); font-size:13px; padding:14px 0; }
+        .surg-cell { padding:5px 6px !important; }
+        .surg-cell input.form-control { padding:5px 8px; font-size:12px; }
+        .surg-auto-banner { background:#f0fdf4; border:1px solid #86efac; border-radius:var(--radius-sm); padding:8px 12px; font-size:12px; color:#166534; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
 
         /* ── Print ── */
         @media print {
@@ -367,6 +372,40 @@
         <div id="kdbProgress" style="display:none;" class="pdf-progress">
             <div class="pdf-progress-text" id="kdbProgressText"></div>
             <div class="pdf-progress-bar-wrap"><div class="pdf-progress-bar" id="kdbProgressBar" style="width:0%"></div></div>
+        </div>
+    </div>
+
+    <!-- ② 수술 분류표 -->
+    <div class="card" id="surgTableCard">
+        <div class="card-title" style="cursor:pointer;user-select:none;" onclick="toggleSurgTable()">
+            🔪 수술 분류표
+            <span class="badge" id="surgTableBadge">미설정</span>
+            <div style="flex:1;"></div>
+            <button class="surg-toggle-btn" id="surgTableToggleBtn">▼ 펼치기</button>
+        </div>
+        <div id="surgTableWrap" style="display:none;">
+            <div id="surgAutoBanner" style="display:none;" class="surg-auto-banner">
+                ✅ <span id="surgAutoMsg"></span>
+                <button class="btn btn-sm btn-outline" style="padding:3px 10px;font-size:12px;" onclick="applySurgAutoDetected()">적용</button>
+                <button class="btn btn-sm" style="padding:3px 10px;font-size:12px;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;" onclick="dismissSurgAuto()">무시</button>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+                수술 분류표를 입력하면 AI 분석 시 수술 종류별 지급 비율을 정확히 참조합니다.<br>
+                <strong>직접 입력</strong>하거나 <strong>JSON 가져오기</strong>로 붙여넣을 수 있습니다.
+            </div>
+            <div class="tbl-wrap" style="margin-bottom:10px;">
+                <table class="rtbl">
+                    <thead><tr><th>수술 종류</th><th>지급 비율</th><th>수술 내용 (예시)</th><th></th></tr></thead>
+                    <tbody id="surgTableBody"></tbody>
+                </table>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <button class="btn btn-outline btn-sm" onclick="addSurgRow()">+ 행 추가</button>
+                <button class="btn btn-outline btn-sm" onclick="importSurgJSON()">📥 JSON 가져오기</button>
+                <button class="btn btn-outline btn-sm" onclick="exportSurgJSON()">📤 JSON 내보내기</button>
+                <div style="flex:1;"></div>
+                <button class="btn btn-sm" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;" onclick="clearSurgTable()">초기화</button>
+            </div>
         </div>
     </div>
 
@@ -873,14 +912,41 @@ async function extractPDFText(file, onProgress) {
     for (let i = 1; i <= totalPages; i++) {
         if (onProgress) onProgress(i, totalPages);
         const content = await (await pdf.getPage(i)).getTextContent();
-        let lastY = null, lineTexts = [], line = [];
-        for (const item of content.items) {
-            const y = item.transform?.[5];
-            if (lastY !== null && Math.abs(y - lastY) > 2) { if(line.length) lineTexts.push(line.join('')); line=[]; }
-            line.push(item.str); lastY = y;
+        if (!content.items.length) continue;
+
+        // Y 내림차순(페이지 위→아래), 동일 행 내 X 오름차순 정렬
+        const sorted = [...content.items]
+            .filter(it => it.str?.trim())
+            .sort((a, b) => {
+                const dy = b.transform[5] - a.transform[5];
+                return Math.abs(dy) > 3 ? dy : a.transform[4] - b.transform[4];
+            });
+
+        // Y 근접 항목을 같은 행으로 묶기
+        const rows = [];
+        let row = [], rowY = null;
+        for (const it of sorted) {
+            const y = it.transform[5], x = it.transform[4];
+            if (rowY === null || Math.abs(y - rowY) <= 4) {
+                row.push({ text: it.str, x });
+                rowY = rowY === null ? y : (rowY + y) / 2;
+            } else {
+                if (row.length) rows.push(row.slice());
+                row = [{ text: it.str, x }]; rowY = y;
+            }
         }
-        if (line.length) lineTexts.push(line.join(''));
-        fullText += `\n--- 페이지 ${i} ---\n` + lineTexts.join('\n');
+        if (row.length) rows.push(row);
+
+        // 행 렌더링: X-spread > 150pt → 표 행(파이프 구분), 그 외 일반 텍스트
+        const pageLines = rows.map(r => {
+            r.sort((a, b) => a.x - b.x);
+            if (r.length > 1 && (r[r.length - 1].x - r[0].x) > 150) {
+                return r.map(it => it.text.trim()).filter(Boolean).join(' | ');
+            }
+            return r.map(it => it.text).join('');
+        }).filter(l => l.trim());
+
+        fullText += `\n--- 페이지 ${i} ---\n` + pageLines.join('\n');
     }
     return { text: fullText, pages: totalPages };
 }
@@ -963,6 +1029,9 @@ async function savePDFToKDB() {
         const n = await KDB.addDocument(id, name, rawPDFText);
         toast(`✓ "${name}" 약관 DB 저장 완료 (${n}개 섹션)`);
         renderKDBList();
+        // 수술 분류표 자동 감지
+        const autoRows = detectSurgTableFromText(rawPDFText);
+        if (autoRows.length) showSurgAutoBanner(autoRows, name);
     } catch (e) { toast('⚠ 저장 실패: ' + e.message); }
 }
 
@@ -990,6 +1059,9 @@ async function handleKDBUpload(file) {
         setP(false);
         toast(`✓ "${name}" 저장 완료 (${n}개 섹션, ${pages}페이지)`);
         renderKDBList();
+        // 수술 분류표 자동 감지
+        const autoRows = detectSurgTableFromText(text);
+        if (autoRows.length) showSurgAutoBanner(autoRows, name);
     } catch (err) {
         setP(false);
         toast('⚠ ' + err.message.split('\n')[0]);
@@ -1039,6 +1111,169 @@ async function buildRAGContext(diagnosis, riders) {
 }
 
 // ════════════════════════════════════════════════════════════
+// 수술 분류표 관리
+// ════════════════════════════════════════════════════════════
+const SURG_KEY = 'surgClassTable';
+let _surgAutoRows = null; // 자동 감지된 미적용 행
+
+function getSurgTable() {
+    try { return JSON.parse(localStorage.getItem(SURG_KEY) || '[]'); } catch { return []; }
+}
+function saveSurgTable(rows) {
+    localStorage.setItem(SURG_KEY, JSON.stringify(rows));
+    renderSurgTable();
+}
+
+// PDF 텍스트에서 수술 분류표 자동 감지
+function detectSurgTableFromText(text) {
+    const KWDS = ['수술분류표', '수술 분류표', '수술종류별', '수술의 종류별', '수술의종류'];
+    let si = -1;
+    for (const kw of KWDS) { const i = text.indexOf(kw); if (i !== -1 && (si === -1 || i < si)) si = i; }
+    if (si === -1) return [];
+
+    const section = text.slice(si, si + 4000);
+    const rows = [];
+
+    for (const line of section.split('\n')) {
+        // 파이프 구분 표 행 처리
+        if (line.includes('|')) {
+            const cells = line.split('|').map(s => s.trim()).filter(Boolean);
+            const typeM = cells[0]?.match(/(\d+\s*종)/);
+            if (typeM && cells.length >= 2) {
+                const ratioM = line.match(/(\d+(?:\.\d+)?\s*%|\d+\/\d+)/);
+                rows.push({
+                    type:  typeM[1].replace(/\s/g, ''),
+                    ratio: ratioM ? ratioM[1] : '',
+                    desc:  cells.slice(1).join(' ').replace(/\d+(?:\.\d+)?\s*%/, '').trim().slice(0, 200)
+                });
+                continue;
+            }
+        }
+        // 일반 텍스트 행 패턴: "제1종" / "1종" + 비율
+        const typeM2 = line.match(/^[제]?\s*(\d+\s*종)\s*(수술)?/);
+        if (typeM2) {
+            const ratioM = line.match(/(\d+(?:\.\d+)?\s*%)/);
+            if (ratioM) {
+                rows.push({
+                    type:  typeM2[1].replace(/\s/g, ''),
+                    ratio: ratioM[1],
+                    desc:  line.replace(typeM2[0], '').replace(ratioM[0], '').trim().slice(0, 200)
+                });
+            }
+        }
+    }
+    // 중복 종류 제거 (첫 등장 우선)
+    const seen = new Set();
+    return rows.filter(r => { if (seen.has(r.type)) return false; seen.add(r.type); return true; });
+}
+
+// 자동 감지 결과 배너 표시
+function showSurgAutoBanner(rows, sourceName) {
+    if (!rows.length) return;
+    _surgAutoRows = rows;
+    const banner = document.getElementById('surgAutoBanner');
+    document.getElementById('surgAutoMsg').textContent =
+        `"${sourceName}"에서 수술 분류표 ${rows.length}종 감지됨. 적용하시겠습니까?`;
+    banner.style.display = 'flex';
+    // 섹션 펼치기
+    if (document.getElementById('surgTableWrap').style.display === 'none') toggleSurgTable();
+}
+
+function applySurgAutoDetected() {
+    if (!_surgAutoRows) return;
+    saveSurgTable(_surgAutoRows);
+    _surgAutoRows = null;
+    document.getElementById('surgAutoBanner').style.display = 'none';
+    toast(`✓ 수술 분류표 ${getSurgTable().length}종 적용 완료`);
+}
+function dismissSurgAuto() {
+    _surgAutoRows = null;
+    document.getElementById('surgAutoBanner').style.display = 'none';
+}
+
+function toggleSurgTable() {
+    const wrap   = document.getElementById('surgTableWrap');
+    const btn    = document.getElementById('surgTableToggleBtn');
+    const hidden = wrap.style.display === 'none';
+    wrap.style.display = hidden ? 'block' : 'none';
+    btn.textContent    = hidden ? '▲ 접기' : '▼ 펼치기';
+}
+
+function renderSurgTable() {
+    const rows  = getSurgTable();
+    const badge = document.getElementById('surgTableBadge');
+    const tbody = document.getElementById('surgTableBody');
+    badge.textContent = rows.length ? `${rows.length}종 설정됨` : '미설정';
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="surg-table-empty">수술 분류 데이터가 없습니다.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map((r, i) => `
+        <tr>
+            <td class="surg-cell"><input class="form-control" value="${esc(r.type)}"
+                onchange="updateSurgRow(${i},'type',this.value)" placeholder="1종"></td>
+            <td class="surg-cell"><input class="form-control" value="${esc(r.ratio)}"
+                onchange="updateSurgRow(${i},'ratio',this.value)" placeholder="100%"></td>
+            <td class="surg-cell"><input class="form-control" value="${esc(r.desc)}"
+                onchange="updateSurgRow(${i},'desc',this.value)" placeholder="개심술, 이식수술 등"></td>
+            <td class="surg-cell" style="text-align:center;width:32px;">
+                <button class="kdb-doc-del" onclick="deleteSurgRow(${i})">×</button>
+            </td>
+        </tr>`).join('');
+}
+
+function addSurgRow() {
+    const rows = getSurgTable();
+    rows.push({ type: '', ratio: '', desc: '' });
+    saveSurgTable(rows);
+}
+function deleteSurgRow(idx) {
+    const rows = getSurgTable(); rows.splice(idx, 1); saveSurgTable(rows);
+}
+function updateSurgRow(idx, field, value) {
+    const rows = getSurgTable();
+    if (rows[idx]) { rows[idx][field] = value; localStorage.setItem(SURG_KEY, JSON.stringify(rows)); }
+}
+function clearSurgTable() {
+    if (!confirm('수술 분류표를 초기화하시겠습니까?')) return;
+    saveSurgTable([]); toast('초기화되었습니다.');
+}
+function exportSurgJSON() {
+    const json = JSON.stringify(getSurgTable(), null, 2);
+    const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([json], { type: 'application/json' })),
+        download: '수술분류표.json'
+    });
+    a.click();
+}
+function importSurgJSON() {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.json';
+    inp.onchange = e => {
+        const f = e.target.files[0]; if (!f) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                const data = JSON.parse(ev.target.result);
+                if (!Array.isArray(data)) throw new Error('배열 형식이어야 합니다.');
+                saveSurgTable(data);
+                toast(`✓ ${data.length}개 항목 가져오기 완료`);
+            } catch(e) { toast('⚠ JSON 오류: ' + e.message); }
+        };
+        reader.readAsText(f);
+    };
+    inp.click();
+}
+
+// analyze()에 주입할 수술 분류표 텍스트
+function buildSurgContext() {
+    const rows = getSurgTable();
+    if (!rows.length) return '';
+    return '\n\n[수술 분류표]\n' +
+        rows.map(r => `${r.type}(${r.ratio||'?'}): ${r.desc||'내용 없음'}`).join('\n');
+}
+
+// ════════════════════════════════════════════════════════════
 // Main Analysis
 // ════════════════════════════════════════════════════════════
 async function analyze() {
@@ -1054,9 +1289,10 @@ async function analyze() {
     const surgText = hasSurg ? `수술 있음 / 수술명: ${document.getElementById('surgName').value.trim()||'미입력'}` : '수술 없음';
     const hospText = hasHosp ? `입원 / 입원일수: ${document.getElementById('hospDays').value||'미입력'}일` : '외래·통원 치료';
 
-    const rag = await buildRAGContext(diagnosis, riders);
+    const rag      = await buildRAGContext(diagnosis, riders);
+    const surgCtx  = buildSurgContext();
 
-    const userPrompt = `[기준일: ${today}]\n\n[보험 특약 정보]\n${riderLines}\n\n[진단·치료 정보]\n진단명/증상: ${diagnosis}\n수술: ${surgText}\n입원: ${hospText}\n기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}\n사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${rag.text}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`;
+    const userPrompt = `[기준일: ${today}]\n\n[보험 특약 정보]\n${riderLines}\n\n[진단·치료 정보]\n진단명/증상: ${diagnosis}\n수술: ${surgText}\n입원: ${hospText}\n기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}\n사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${surgCtx}${rag.text}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`;
 
     const systemPrompt = `한국 손해보험 손해사정사. KCD-8 코드, 면책기간(암·뇌·심장 90일/일반 30~180일), 감액기간(1~2년 50%), 직접원인, 실손 자기부담금 기준 적용.
 순수 JSON만 반환 (코드블록 없이):
@@ -1181,6 +1417,7 @@ function init() {
     addRider();
     checkAuth();
     renderKDBList();
+    renderSurgTable();
 }
 init();
 </script>
