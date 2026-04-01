@@ -251,6 +251,31 @@
         .surg-cell input.form-control { padding:5px 8px; font-size:12px; }
         .surg-auto-banner { background:#f0fdf4; border:1px solid #86efac; border-radius:var(--radius-sm); padding:8px 12px; font-size:12px; color:#166534; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
 
+        /* ── Toss Card ── */
+        .toss-header-bar { background:linear-gradient(135deg,#0055ff,#3b82f6); color:white; border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:12px; display:flex; align-items:center; gap:12px; }
+        .toss-policy-block { margin-bottom:8px; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
+        .toss-policy-head { background:var(--primary-light); padding:7px 12px; display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:var(--primary); }
+        .toss-rider-row { display:flex; justify-content:space-between; align-items:center; padding:6px 12px; border-top:1px solid var(--border); font-size:13px; }
+        .toss-rider-row:nth-child(even) { background:#fafbff; }
+        .toss-rider-amt { font-weight:600; color:var(--primary); white-space:nowrap; margin-left:8px; }
+        .toss-summary-bar { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius-sm); padding:8px 14px; font-size:12px; color:#166534; font-weight:600; margin-bottom:10px; }
+
+        /* ── Gap Analysis ── */
+        .gap-section { background:linear-gradient(135deg,#fff7ed,#fffbeb); border:1px solid #fed7aa; border-radius:var(--radius); padding:20px; margin-bottom:14px; }
+        .gap-title-bar { font-size:15px; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+        .gap-item { display:flex; gap:10px; padding:9px 0; border-bottom:1px solid #fed7aa; align-items:flex-start; }
+        .gap-item:last-child { border-bottom:none; padding-bottom:0; }
+        .gap-badge { padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0; margin-top:2px; }
+        .gap-miss { background:#fee2e2; color:#991b1b; }
+        .gap-low  { background:#fef3c7; color:#92400e; }
+        .gap-name { font-size:13px; font-weight:600; }
+        .gap-detail { font-size:12px; color:var(--muted); margin-top:2px; line-height:1.5; }
+        .gap-rec  { font-size:12px; color:#7c3aed; font-weight:600; margin-top:2px; }
+        .toss-gap-banner { background:#fff7ed; border:1px solid #fed7aa; border-radius:var(--radius-sm); padding:10px 14px; margin-top:12px; }
+        .toss-gap-title { font-size:12px; font-weight:700; color:#92400e; margin-bottom:8px; }
+        .toss-gap-row { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; }
+        .toss-gap-row-ok { color:#166534; }
+
         /* ── Print ── */
         @media print {
             #passwordGate { display:none!important; }
@@ -321,6 +346,46 @@
 </header>
 
 <main class="container">
+
+    <!-- 토스인슈어런스 리포트 -->
+    <div class="card" id="tossCard">
+        <div class="card-title">
+            💙 토스인슈어런스 리포트 분석
+            <span class="badge badge-green">자동 추출</span>
+        </div>
+        <div class="toss-header-bar">
+            <div style="font-size:28px;">📊</div>
+            <div>
+                <div style="font-weight:700;font-size:14px;">보장분석 리포트 PDF 업로드</div>
+                <div style="font-size:12px;opacity:.85;margin-top:2px;">토스인슈어런스 앱 → 내 보험 → 보장분석 → PDF 저장 후 업로드</div>
+            </div>
+        </div>
+        <div id="tossDropZone" class="drop-zone"
+             onclick="document.getElementById('tossFileInput').click()"
+             ondragover="onDragOverToss(event)" ondragleave="onDragLeaveToss()" ondrop="onDropToss(event)">
+            <div class="drop-icon">💙</div>
+            <div class="drop-text">토스 보장분석 리포트 PDF 드래그 또는 클릭</div>
+            <div class="drop-sub">파일은 브라우저에서만 처리되며 서버에 저장되지 않습니다</div>
+        </div>
+        <input type="file" id="tossFileInput" accept=".pdf" style="display:none" onchange="handleTossFile(this.files[0])">
+        <div id="tossProgress" style="display:none;" class="pdf-progress">
+            <div class="pdf-progress-text" id="tossProgressText"></div>
+            <div class="pdf-progress-bar-wrap"><div class="pdf-progress-bar" id="tossProgressBar" style="width:0%"></div></div>
+        </div>
+        <div id="tossResultWrap" style="display:none;" class="pdf-result">
+            <div class="pdf-result-header">
+                <div class="pdf-result-title" id="tossResultTitle">추출 결과</div>
+                <button class="btn btn-sm" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;" onclick="resetToss()">✕ 초기화</button>
+            </div>
+            <div id="tossSummaryBar" class="toss-summary-bar" style="display:none;"></div>
+            <div id="tossResultBody" style="max-height:400px;overflow-y:auto;"></div>
+            <div id="tossGapBanner"></div>
+            <div class="pdf-actions" style="margin-top:10px;">
+                <div style="flex:1;"></div>
+                <button class="btn btn-success btn-sm" onclick="applyTossToForm()">✓ 전체 특약 폼에 적용</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ① PDF 업로드 -->
     <div class="card" id="pdfCard">
@@ -868,9 +933,12 @@ async function apiFetch(url, body) {
 // ════════════════════════════════════════════════════════════
 // PDF Upload
 // ════════════════════════════════════════════════════════════
-function onDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag-over'); }
-function onDragLeave()  { document.getElementById('dropZone').classList.remove('drag-over'); }
-function onDrop(e)      { e.preventDefault(); document.getElementById('dropZone').classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f) handlePDFFile(f); }
+function onDragOver(e)     { e.preventDefault(); document.getElementById('dropZone').classList.add('drag-over'); }
+function onDragLeave()     { document.getElementById('dropZone').classList.remove('drag-over'); }
+function onDrop(e)         { e.preventDefault(); document.getElementById('dropZone').classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f) handlePDFFile(f); }
+function onDragOverToss(e) { e.preventDefault(); document.getElementById('tossDropZone').classList.add('drag-over'); }
+function onDragLeaveToss() { document.getElementById('tossDropZone').classList.remove('drag-over'); }
+function onDropToss(e)     { e.preventDefault(); document.getElementById('tossDropZone').classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f) handleTossFile(f); }
 
 async function handlePDFFile(file) {
     if (!file || file.type !== 'application/pdf') { toast('PDF 파일만 업로드 가능합니다.'); return; }
@@ -1111,6 +1179,166 @@ async function buildRAGContext(diagnosis, riders) {
 }
 
 // ════════════════════════════════════════════════════════════
+// 토스인슈어런스 리포트 파싱
+// ════════════════════════════════════════════════════════════
+let tossExtracted = null;
+
+// 보장 공백 체크리스트 (가입 여부·금액 기준)
+const COVERAGE_CHECKLIST = [
+    { id:'cancer',  label:'암 진단비',     re:/암\s*(진단|특약|보장)/,                   recommend:'3,000만원 이상', threshold:20000000 },
+    { id:'brain',   label:'뇌혈관 진단비', re:/뇌(졸중|혈관|경색|출혈|혈전)\s*(진단)?/,  recommend:'2,000만원 이상', threshold:10000000 },
+    { id:'heart',   label:'심장 진단비',   re:/(심근경색|허혈성심장|급성심)\s*(진단)?/,   recommend:'2,000만원 이상', threshold:10000000 },
+    { id:'hosp',    label:'입원일당',      re:/입원\s*일당/,                              recommend:'5만원/일 이상',  threshold:0        },
+    { id:'surgery', label:'수술비',        re:/(질병|상해)?\s*수술비/,                    recommend:'1,000만원 이상', threshold:5000000  },
+    { id:'lsi',     label:'실손의료보험',  re:/실(손|비)\s*(의료)?/,                      recommend:'필수 가입',      threshold:0        },
+    { id:'injury',  label:'상해후유장해',  re:/상해\s*후유\s*장해/,                       recommend:'8,000만원 이상', threshold:50000000 },
+    { id:'care',    label:'간병·치매',     re:/(간병|치매|장기요양)/,                     recommend:'가입 권유',      threshold:0        },
+];
+
+function parseKorAmount(s) {
+    if (!s || s === '미확인') return 0;
+    const c = s.replace(/[,\s]/g, '');
+    let v = 0;
+    const ma = c.match(/(\d+(?:\.\d+)?)억/); if (ma) v += parseFloat(ma[1]) * 100000000;
+    const mm = c.match(/(\d+(?:\.\d+)?)만/);  if (mm) v += parseFloat(mm[1]) * 10000;
+    if (!v) { const mn = c.match(/(\d+)/); if (mn) v = parseInt(mn[1]); }
+    return v;
+}
+
+// 보유 특약 목록에서 보장 공백 진단
+function buildClientGapAnalysis(riders) {
+    return COVERAGE_CHECKLIST.map(c => {
+        const matched = riders.filter(r => c.re.test(r.rider || r.name || ''));
+        if (!matched.length) return { ...c, status: '미가입', current: '미가입' };
+        const total = matched.reduce((s, r) => s + parseKorAmount(r.amount), 0);
+        if (c.threshold > 0 && total < c.threshold) {
+            return { ...c, status: '부족', current: fmtAmount(total) + '원' };
+        }
+        return { ...c, status: '적정', current: fmtAmount(total) + '원' };
+    });
+}
+
+async function handleTossFile(file) {
+    if (!file || file.type !== 'application/pdf') { toast('PDF 파일만 업로드 가능합니다.'); return; }
+    tossExtracted = null;
+    document.getElementById('tossResultWrap').style.display = 'none';
+    document.getElementById('tossFileInput').value = '';
+    setTossProgress(true, 'PDF 읽는 중…', 5);
+    try {
+        const { text, pages } = await extractPDFText(file, (p, tot) =>
+            setTossProgress(true, `텍스트 추출 중… (${p}/${tot}페이지)`, Math.round(5 + p / tot * 50))
+        );
+        if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
+        setTossProgress(true, `AI 분석 중… (${pages}페이지)`, 60);
+        const result = await extractTossReport(text);
+        tossExtracted = result;
+        setTossProgress(true, '완료!', 100);
+        setTimeout(() => { setTossProgress(false); renderTossResult(result, file.name); }, 350);
+    } catch (err) {
+        setTossProgress(false);
+        toast('⚠ ' + err.message.split('\n')[0]);
+        document.getElementById('tossResultWrap').innerHTML =
+            `<div class="error-box" style="margin-top:12px;">⚠️ ${err.message.replace(/\n/g,'<br>')}</div>`;
+        document.getElementById('tossResultWrap').style.display = 'block';
+    }
+}
+
+function setTossProgress(show, text = '', pct = 0) {
+    document.getElementById('tossProgress').style.display = show ? 'block' : 'none';
+    if (show) {
+        document.getElementById('tossProgressText').textContent = text;
+        document.getElementById('tossProgressBar').style.width  = pct + '%';
+    }
+}
+
+async function extractTossReport(text) {
+    const model   = localStorage.getItem('ai_model') || 'claude-sonnet-4-6';
+    const trimmed = text.length > 10000 ? text.slice(0, 7000) + '\n\n[...중략...]\n\n' + text.slice(-3000) : text;
+    const system  = `토스인슈어런스 보장분석 리포트에서 모든 보유 보험 데이터 추출. 순수 JSON만 반환 (코드블록·설명 없이):
+{"holder":"","policies":[{"insurer":"보험사명","product":"상품명","start_date":"YYYY-MM-DD","riders":[{"name":"보장항목명","amount":"보장금액"}]}],"note":""}
+규칙: 모든 보험사·상품·보장항목 빠짐없이 추출. 금액 없으면 "미확인". 날짜 없으면 빈 문자열.`;
+    const data = await apiFetch('/api/messages', {
+        model, max_tokens: 4096, system,
+        messages: [{ role: 'user', content: `토스 보장분석 리포트 PDF:\n\n${trimmed}` }]
+    });
+    return parseAPIJson(data);
+}
+
+function renderTossResult(result, filename) {
+    const policies  = result.policies || [];
+    const allRiders = policies.flatMap(p => (p.riders || []).map(r => ({ ...r, insurer: p.insurer, product: p.product })));
+    const totalCount = allRiders.length;
+
+    // 요약 바
+    const summaryEl = document.getElementById('tossSummaryBar');
+    summaryEl.textContent = `✅ ${result.holder ? result.holder + ' 님 · ' : ''}총 ${policies.length}개 상품 · ${totalCount}개 보장항목 확인`;
+    summaryEl.style.display = 'block';
+
+    document.getElementById('tossResultTitle').textContent = `"${filename}" — ${policies.length}개 상품 추출`;
+
+    // 상품별 보장항목 렌더링
+    const bodyEl = document.getElementById('tossResultBody');
+    bodyEl.innerHTML = policies.map(p => `
+        <div class="toss-policy-block">
+            <div class="toss-policy-head">
+                <span>${p.insurer || '보험사 미확인'} · ${p.product || '상품명 미확인'}</span>
+                <span style="font-weight:400;color:var(--muted);">${p.start_date ? '가입 ' + p.start_date : ''}</span>
+            </div>
+            ${(p.riders || []).map(r => `
+                <div class="toss-rider-row">
+                    <span class="toss-rider-name">${r.name}</span>
+                    <span class="toss-rider-amt">${r.amount || '미확인'}</span>
+                </div>`).join('')}
+        </div>`).join('');
+
+    // 클라이언트사이드 보장 공백 진단
+    const gaps = buildClientGapAnalysis(allRiders);
+    const missList = gaps.filter(g => g.status === '미가입');
+    const lowList  = gaps.filter(g => g.status === '부족');
+    const gapEl    = document.getElementById('tossGapBanner');
+    if (missList.length || lowList.length) {
+        gapEl.innerHTML = `
+            <div class="toss-gap-banner">
+                <div class="toss-gap-title">⚠️ 보장 공백 진단 (${missList.length}개 미가입 · ${lowList.length}개 부족)</div>
+                ${missList.map(g => `<div class="toss-gap-row"><span class="gap-badge gap-miss">미가입</span><span><strong>${g.label}</strong> — 권장: ${g.recommend}</span></div>`).join('')}
+                ${lowList.map(g => `<div class="toss-gap-row"><span class="gap-badge gap-low">부족</span><span><strong>${g.label}</strong> 현재: ${g.current} · 권장: ${g.recommend}</span></div>`).join('')}
+            </div>`;
+    } else {
+        gapEl.innerHTML = '<div class="toss-gap-banner" style="background:#f0fdf4;border-color:#86efac;"><div class="toss-gap-title" style="color:#166534;">✅ 주요 보장 항목 모두 가입 확인</div></div>';
+    }
+
+    document.getElementById('tossResultWrap').style.display = 'block';
+    document.getElementById('tossResultWrap').classList.add('fade-in');
+    if (result.note) toast('ℹ ' + result.note);
+}
+
+function applyTossToForm() {
+    if (!tossExtracted) return;
+    const policies = tossExtracted.policies || [];
+    const allRiders = policies.flatMap(p =>
+        (p.riders || []).map(r => ({
+            insurer:   p.insurer   || '',
+            product:   p.product   || '',
+            rider:     r.name      || '',
+            amount:    r.amount    || '',
+            startDate: p.start_date || ''
+        }))
+    );
+    if (!allRiders.length) { toast('추출된 특약이 없습니다.'); return; }
+    clearAllRiders();
+    allRiders.forEach(r => addRider(r));
+    toast(`✓ ${allRiders.length}개 보장항목이 폼에 적용되었습니다.`);
+    document.getElementById('ridersContainer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function resetToss() {
+    tossExtracted = null;
+    document.getElementById('tossResultWrap').style.display = 'none';
+    setTossProgress(false);
+    document.getElementById('tossFileInput').value = '';
+}
+
+// ════════════════════════════════════════════════════════════
 // 수술 분류표 관리
 // ════════════════════════════════════════════════════════════
 const SURG_KEY = 'surgClassTable';
@@ -1302,8 +1530,8 @@ async function analyze() {
 4. 상해 관련 특약 전체(상해입원, 상해후유장해, 상해사망 등): 면책기간 없음 + 감액기간 없음
 5. 기타 질병 특약(일반입원, 실손 등): 면책기간 30~180일 + 감액기간 1~2년 50%
 순수 JSON만 반환 (코드블록 없이):
-{"kcd_analysis":{"estimated_codes":[],"disease_category":"","description":""},"coverage_classification":{"3대진단":false,"입원":false,"수술":false,"실손":false,"상해":false,"간병":false,"explanation":""},"period_check":{"exemption_applicable":false,"exemption_detail":"","reduction_applicable":false,"reduction_detail":"","direct_cause_met":true,"direct_cause_detail":""},"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":"","notes":""}],"total_estimated":0,"total_description":"","customer_script":"","important_notes":[],"disclaimer":""}
-coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나.`;
+{"kcd_analysis":{"estimated_codes":[],"disease_category":"","description":""},"coverage_classification":{"3대진단":false,"입원":false,"수술":false,"실손":false,"상해":false,"간병":false,"explanation":""},"period_check":{"exemption_applicable":false,"exemption_detail":"","reduction_applicable":false,"reduction_detail":"","direct_cause_met":true,"direct_cause_detail":""},"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":"","notes":""}],"total_estimated":0,"total_description":"","customer_script":"","important_notes":[],"coverage_gaps":[{"category":"","status":"미가입","current":"","recommend":"","reason":""}],"disclaimer":""}
+coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나. coverage_gaps: 미가입·부족 항목만 (최대 5개), status는 "미가입"/"부족" 중 하나.`;
 
     const btn = document.getElementById('analyzeBtn');
     btn.disabled = true; btn.textContent = '분석 중…';
@@ -1386,6 +1614,7 @@ function renderResults(r, riderData, ragRefs = []) {
         <div class="card"><div class="card-title">📊 특약별 보장 분석</div><div class="tbl-wrap"><table class="rtbl"><thead><tr><th>특약명</th><th>보장 여부</th><th>예상 금액</th><th>판정 근거</th></tr></thead><tbody>${tblRows}</tbody></table></div></div>
         <div class="card"><div class="card-title">💬 고객 설명 멘트</div><div class="script-box"><button class="copy-btn" onclick="copyScript()">📋 복사</button><div class="script-text" id="scriptText">${r.customer_script||''}</div></div></div>
         ${noteItems?`<div class="card"><div class="card-title">⚠️ 주의사항</div><ul class="notes-list">${noteItems}</ul></div>`:''}
+        ${renderGapSection(r.coverage_gaps)}
         <div class="disclaimer">⚖️ ${r.disclaimer||'이 분석은 참고용이며 실제 보험금 지급 여부는 보험사 최종 심사에 따라 달라질 수 있습니다.'}</div>
         <div class="action-bar">
             <button class="btn btn-outline" onclick="window.print()">🖨️ 인쇄 / PDF</button>
@@ -1394,6 +1623,23 @@ function renderResults(r, riderData, ragRefs = []) {
     </div>`;
     document.getElementById('resultsSection').style.display='block';
     setTimeout(()=>document.getElementById('resultsSection').scrollIntoView({behavior:'smooth',block:'start'}),80);
+}
+
+function renderGapSection(gaps) {
+    if (!gaps || !gaps.length) return '';
+    const items = gaps.filter(g => g.status === '미가입' || g.status === '부족');
+    if (!items.length) return '';
+    const rows = items.map(g => `
+        <div class="gap-item">
+            <span class="gap-badge ${g.status === '미가입' ? 'gap-miss' : 'gap-low'}">${g.status}</span>
+            <div>
+                <div class="gap-name">${g.category}</div>
+                ${g.current ? `<div class="gap-detail">현재: ${g.current}</div>` : ''}
+                <div class="gap-rec">권장: ${g.recommend}</div>
+                ${g.reason ? `<div class="gap-detail">${g.reason}</div>` : ''}
+            </div>
+        </div>`).join('');
+    return `<div class="gap-section"><div class="gap-title-bar">📌 추가 가입 권유 <span style="font-size:12px;font-weight:400;color:#92400e;">(${items.length}개 항목)</span></div>${rows}</div>`;
 }
 
 function fmtAmount(n) {
