@@ -1196,12 +1196,18 @@ const COVERAGE_CHECKLIST = [
 ];
 
 function parseKorAmount(s) {
-    if (!s || s === '미확인') return 0;
-    const c = s.replace(/[,\s]/g, '');
+    if (!s || s === '미확인' || s === '해당없음') return 0;
+    // 공백 제거, 유럽식 천단위 점 제거("3.000만원" → "3000만원"), 쉼표 제거
+    let t = s.trim()
+             .replace(/(\d)\.(\d{3})/g, '$1$2')   // 3.000 → 3000 (유럽식 천단위)
+             .replace(/,/g, '')                     // 3,000 → 3000
+             .replace(/\s+/g, '');                  // 공백 제거
     let v = 0;
-    const ma = c.match(/(\d+(?:\.\d+)?)억/); if (ma) v += parseFloat(ma[1]) * 100000000;
-    const mm = c.match(/(\d+(?:\.\d+)?)만/);  if (mm) v += parseFloat(mm[1]) * 10000;
-    if (!v) { const mn = c.match(/(\d+)/); if (mn) v = parseInt(mn[1]); }
+    const m억 = t.match(/(\d+(?:\.\d+)?)억/); if (m억) v += parseFloat(m억[1]) * 100000000;
+    const m천만 = t.match(/(\d+(?:\.\d+)?)천만/); if (m천만) v += parseFloat(m천만[1]) * 10000000;
+    const m만 = t.match(/(\d+(?:\.\d+)?)만/);  if (m만) v += parseFloat(m만[1]) * 10000;
+    const m천 = !m만 && t.match(/(\d+(?:\.\d+)?)천(?!만)/); if (m천) v += parseFloat(m천[1]) * 1000;
+    if (!v) { const mn = t.match(/(\d+)/); if (mn) v = parseInt(mn[1]); }
     return v;
 }
 
@@ -1251,6 +1257,22 @@ function setTossProgress(show, text = '', pct = 0) {
     }
 }
 
+// 금액 단위 셀("만원","원" 등)을 앞 숫자 셀에 병합
+// 예: ["암진단비", "3,000", "만원", "뇌경색", "500", "만원"]
+//  → ["암진단비", "3,000만원", "뇌경색", "500만원"]
+function mergeUnitCells(cells) {
+    const UNITS = ['만원', '원', '천원', '백만원', '억원', '만원/일', '원/일', '만원/월'];
+    const out = [];
+    for (let i = 0; i < cells.length; i++) {
+        if (out.length > 0 && UNITS.includes(cells[i])) {
+            out[out.length - 1] += cells[i];   // "3,000" + "만원" = "3,000만원"
+        } else {
+            out.push(cells[i]);
+        }
+    }
+    return out;
+}
+
 // "상품별 보험 가입현황" 섹션을 찾아 추출 (2컬럼 레이아웃 보정 포함)
 function extractTossProductSection(text) {
     // 섹션 시작 마커 탐색
@@ -1260,17 +1282,19 @@ function extractTossProductSection(text) {
         const i = text.indexOf(m);
         if (i !== -1 && (si === -1 || i < si)) si = i;
     }
-    // 섹션 못 찾으면 전체 사용, 찾으면 해당 섹션부터
-    const base = si !== -1 ? text.slice(si) : text;
+    const rawBase = si !== -1 ? text.slice(si) : text;
 
-    // 토스 리포트의 2컬럼 파이프 행을 두 행으로 분리
-    // 예: "암진단비 | 1,000만원 | 뇌졸중 | 500만원"
-    //  → "암진단비 | 1,000만원\n뇌졸중 | 500만원"
-    // 단, 단순 항목|금액 쌍(컬럼 2개)은 그대로 유지
+    // ① 텍스트 레벨 정규화: "숫자 만원", "숫자만 원", "숫자 | 만원" 패턴을 합체
+    const base = rawBase
+        .replace(/(\d[\d,]*)\s*\|\s*(만원|천원|억원|백만원|원(?=\s|$|\|))/g, '$1$2') // "3,000 | 만원" → "3,000만원"
+        .replace(/(\d[\d,]*)만\s+원/g, '$1만원')                                    // "3,000만 원" → "3,000만원"
+        .replace(/(\d[\d,]*)\s+(만원|천원|억원|백만원)/g, '$1$2');                   // "3,000 만원" → "3,000만원"
+
+    // ② 라인별 2컬럼 처리: 단위 셀 병합 후 (항목|금액) 쌍으로 분리
     const deduped = base.split('\n').map(line => {
-        const cells = line.split('|').map(s => s.trim()).filter(Boolean);
+        const raw = line.split('|').map(s => s.trim()).filter(Boolean);
+        const cells = mergeUnitCells(raw);   // 단위 셀 먼저 병합
         if (cells.length >= 4) {
-            // 짝수 셀이면 2개씩 쌍으로 나눔 (항목|금액 반복)
             const pairs = [];
             for (let i = 0; i < cells.length; i += 2) {
                 if (cells[i + 1] !== undefined) pairs.push(cells[i] + ' | ' + cells[i + 1]);
@@ -1278,12 +1302,10 @@ function extractTossProductSection(text) {
             }
             return pairs.join('\n');
         }
-        return line;
+        return cells.join(' | ');            // 병합된 셀 재조합
     }).join('\n');
 
-    // 토큰 한도 내에서 최대한 많이 유지 (앞부분 우선)
     if (deduped.length <= 14000) return deduped;
-    // 너무 길면 앞 12000자 + 마지막 2000자
     return deduped.slice(0, 12000) + '\n\n[...이하 생략...]\n\n' + deduped.slice(-2000);
 }
 
@@ -1296,7 +1318,7 @@ async function extractTossReport(text) {
 [파싱 규칙 — 반드시 준수]
 1. 상품 경계: 보험사명 + 상품명 헤더가 나올 때마다 새 상품으로 분리. 이전 상품 항목이 다음 상품에 절대 포함되지 않도록 할 것.
 2. 2컬럼 처리: "항목A | 금액A" 형식이 한 줄에 있으면 그대로 추출. "항목A | 금액A | 항목B | 금액B"처럼 이미 2행으로 분리된 경우도 각각 독립 항목으로 처리.
-3. 금액 추출: "3,000만원" "100만원" "일당 3만원" "연 200만원" "500만원" 등 숫자+단위가 보이면 반드시 추출. 진짜 금액이 없는 경우만 "미확인".
+3. 금액 추출: 쉼표 포함 숫자를 반드시 정확히 읽을 것. "3,000만원"은 삼천만원(3,000만원)이며 절대 300만원·30만원으로 줄여 쓰지 말 것. "3,000"처럼 단위 없는 숫자는 주변 문맥(컬럼 헤더 등)의 단위를 적용. 금액이 전혀 없을 때만 "미확인".
 4. 가입일: "가입일" "계약일" 뒤에 오는 날짜를 YYYY-MM-DD 형식으로.
 
 순수 JSON만 반환 (코드블록·설명 없이):
