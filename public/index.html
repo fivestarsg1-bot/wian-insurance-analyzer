@@ -1294,7 +1294,13 @@ async function analyze() {
 
     const userPrompt = `[기준일: ${today}]\n\n[보험 특약 정보]\n${riderLines}\n\n[진단·치료 정보]\n진단명/증상: ${diagnosis}\n수술: ${surgText}\n입원: ${hospText}\n기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}\n사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${surgCtx}${rag.text}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`;
 
-    const systemPrompt = `한국 손해보험 손해사정사. KCD-8 코드, 면책기간(암·뇌·심장 90일/일반 30~180일), 감액기간(1~2년 50%), 직접원인, 실손 자기부담금 기준 적용.
+    const systemPrompt = `한국 손해보험 손해사정사. KCD-8 코드, 직접원인, 실손 자기부담금 기준 적용.
+[면책기간·감액기간 적용 규칙 — 특약별 엄격히 구분]
+1. 암 관련 특약(암진단비, 암입원, 암수술 등): 면책기간 90일 + 감액기간 1년 50%
+2. 뇌혈관·심장 관련 진단비(뇌졸중, 뇌경색, 급성심근경색 등): 면책기간 없음 + 감액기간 1~2년 50%
+3. 수술비 특약 전체(질병수술비, 상해수술비, 수술비II 등 "수술비" 포함 명칭): 면책기간 없음 + 감액기간 없음
+4. 상해 관련 특약 전체(상해입원, 상해후유장해, 상해사망 등): 면책기간 없음 + 감액기간 없음
+5. 기타 질병 특약(일반입원, 실손 등): 면책기간 30~180일 + 감액기간 1~2년 50%
 순수 JSON만 반환 (코드블록 없이):
 {"kcd_analysis":{"estimated_codes":[],"disease_category":"","description":""},"coverage_classification":{"3대진단":false,"입원":false,"수술":false,"실손":false,"상해":false,"간병":false,"explanation":""},"period_check":{"exemption_applicable":false,"exemption_detail":"","reduction_applicable":false,"reduction_detail":"","direct_cause_met":true,"direct_cause_detail":""},"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":"","notes":""}],"total_estimated":0,"total_description":"","customer_script":"","important_notes":[],"disclaimer":""}
 coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나.`;
