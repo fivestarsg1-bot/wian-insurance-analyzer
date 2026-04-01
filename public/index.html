@@ -730,24 +730,15 @@ async function extractPDFText(file, onProgress) {
 async function extractRidersWithClaude(text) {
     const model = localStorage.getItem('ai_model') || 'claude-sonnet-4-6';
     let trimmed = text;
-    if (text.length > 15000) trimmed = text.slice(0, 10000) + '\n\n[...중략...]\n\n' + text.slice(-5000);
+    if (text.length > 8000) trimmed = text.slice(0, 5000) + '\n\n[...중략...]\n\n' + text.slice(-3000);
 
-    const system = `당신은 한국 보험 증권·약관 문서 파싱 전문가입니다.
-반드시 다음 JSON 구조만 반환하세요 (코드 블록, 설명 없이 순수 JSON):
-{
-  "insurer": "보험사명 (없으면 빈 문자열)",
-  "product": "상품명 (없으면 빈 문자열)",
-  "policy_start_date": "YYYY-MM-DD (없으면 빈 문자열)",
-  "riders": [
-    { "name": "특약명", "amount": "가입금액 또는 미확인", "start_date": "YYYY-MM-DD 또는 빈 문자열" }
-  ],
-  "extraction_note": "주의사항 (없으면 빈 문자열)"
-}
-주의: 보험료는 amount에 넣지 말것. 날짜는 YYYY-MM-DD 형식.`;
+    const system = `한국 보험 약관 파싱 전문가. 순수 JSON만 반환 (코드블록·설명 없이):
+{"insurer":"","product":"","policy_start_date":"YYYY-MM-DD","riders":[{"name":"특약명","amount":"가입금액 또는 미확인","start_date":"YYYY-MM-DD"}],"extraction_note":""}
+주의: amount에 보험료 넣지 말것. 날짜 YYYY-MM-DD.`;
 
     const data = await apiFetch('/api/messages', {
-        model, max_tokens: 8192, system,
-        messages: [{ role:'user', content:`보험 증권/약관 PDF 텍스트입니다. 특약 정보를 추출해주세요.\n\n${trimmed}` }]
+        model, max_tokens: 3000, system,
+        messages: [{ role:'user', content:`보험 약관 PDF. 특약 추출:\n\n${trimmed}` }]
     });
     return parseAPIJson(data);
 }
@@ -818,10 +809,9 @@ async function analyze() {
 
     const userPrompt = `[기준일: ${today}]\n\n[보험 특약 정보]\n${riderLines}\n\n[진단·치료 정보]\n진단명/증상: ${diagnosis}\n수술: ${surgText}\n입원: ${hospText}\n기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}\n사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`;
 
-    const systemPrompt = `당신은 한국 손해보험 전문 손해사정사(KICPA 자격)입니다.
-[분석 기준] 1.표준약관·금감원 보험업감독규정 2.KCD-8 코드 분류 3.면책기간(암·뇌·심장90일,일반30~180일) 4.감액기간(1~2년 50%) 5.상해 3요소 6.직접원인 요건 7.실손 자기부담금
-반드시 다음 JSON만 반환 (코드블록 없이):
-{"kcd_analysis":{"estimated_codes":["C50.9"],"disease_category":"","description":""},"coverage_classification":{"3대진단":true,"입원":true,"수술":false,"실손":true,"상해":false,"간병":false,"explanation":""},"period_check":{"exemption_applicable":false,"exemption_detail":"","reduction_applicable":false,"reduction_detail":"","direct_cause_met":true,"direct_cause_detail":""},"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":"","notes":""}],"total_estimated":0,"total_description":"","customer_script":"","important_notes":[],"disclaimer":""}
+    const systemPrompt = `한국 손해보험 손해사정사. KCD-8 코드, 면책기간(암·뇌·심장 90일/일반 30~180일), 감액기간(1~2년 50%), 직접원인, 실손 자기부담금 기준 적용.
+순수 JSON만 반환 (코드블록 없이):
+{"kcd_analysis":{"estimated_codes":[],"disease_category":"","description":""},"coverage_classification":{"3대진단":false,"입원":false,"수술":false,"실손":false,"상해":false,"간병":false,"explanation":""},"period_check":{"exemption_applicable":false,"exemption_detail":"","reduction_applicable":false,"reduction_detail":"","direct_cause_met":true,"direct_cause_detail":""},"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":"","notes":""}],"total_estimated":0,"total_description":"","customer_script":"","important_notes":[],"disclaimer":""}
 coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나.`;
 
     const btn = document.getElementById('analyzeBtn');
@@ -836,7 +826,7 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나.`;
     try {
         const model = localStorage.getItem('ai_model') || 'claude-sonnet-4-6';
         const data = await apiFetch('/api/messages', {
-            model, max_tokens: 8192, system: systemPrompt,
+            model, max_tokens: 4096, system: systemPrompt,
             messages: [{ role:'user', content: userPrompt }]
         });
         clearInterval(stepTimer);
