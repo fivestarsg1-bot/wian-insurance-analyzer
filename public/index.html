@@ -258,6 +258,15 @@
         .toss-rider-row { display:flex; justify-content:space-between; align-items:center; padding:6px 12px; border-top:1px solid var(--border); font-size:13px; }
         .toss-rider-row:nth-child(even) { background:#fafbff; }
         .toss-rider-amt { font-weight:600; color:var(--primary); white-space:nowrap; margin-left:8px; }
+        .toss-cat-block { border-top:1px solid var(--border); }
+        .toss-cat-header { display:flex; justify-content:space-between; align-items:center; padding:7px 12px; cursor:pointer; user-select:none; background:#f5f7ff; transition:background .15s; }
+        .toss-cat-header:hover { background:#eef1ff; }
+        .toss-cat-name { font-size:12px; font-weight:700; color:#374151; }
+        .toss-cat-meta { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+        .toss-cat-arrow { display:inline-block; transition:transform .2s; font-style:normal; }
+        .toss-cat-arrow.open { transform:rotate(180deg); }
+        .toss-cat-body { display:none; }
+        .toss-cat-body.open { display:block; }
         .toss-summary-bar { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius-sm); padding:8px 14px; font-size:12px; color:#166534; font-weight:600; margin-bottom:10px; }
 
         /* ── Gap Analysis ── */
@@ -1293,7 +1302,12 @@ PDF를 텍스트로 변환하면 표의 각 열이 " | " (파이프)로 구분�
 
 ## 출력 형식
 순수 JSON만 반환 (마크다운 코드블록·설명 없이):
-{"holder":"","policies":[{"insurer":"보험사명","product":"상품명","start_date":"YYYY-MM-DD","riders":[{"name":"보장항목명","amount":"금액(예:3,000만원)"}]}],"note":""}`;
+{"holder":"","policies":[{"insurer":"보험사명","product":"상품명","start_date":"YYYY-MM-DD","categories":[{"name":"카테고리명","riders":[{"name":"보장항목명","amount":"금액(예:3,000만원)"}]}]}],"note":""}
+
+카테고리 분류 규칙:
+- PDF에 섹션 헤더(예: 특정암진단, 뇌혈관질환 등)가 있으면 그것을 카테고리명으로 사용
+- 헤더가 없으면 보장 유형별로 직접 분류: 암 관련 / 뇌혈관 관련 / 심장 관련 / 수술비 / 입원일당 / 실손 / 상해 관련 / 기타
+- 카테고리당 riders 배열에 해당 세부 항목 모두 포함`;
 
     const data = await apiFetch('/api/messages', {
         model, max_tokens: 4096, system,
@@ -1302,9 +1316,27 @@ PDF를 텍스트로 변환하면 표의 각 열이 " | " (파이프)로 구분�
     return parseAPIJson(data);
 }
 
+// categories 구조에서 riders 평탄화 (gap 분석·폼 적용에 공통 사용)
+function flattenPolicyRiders(policies) {
+    return policies.flatMap(p =>
+        (p.categories || []).flatMap(cat =>
+            (cat.riders || []).map(r => ({ ...r, category: cat.name, insurer: p.insurer, product: p.product }))
+        )
+    );
+}
+
+// 카테고리 아코디언 토글
+function toggleTossCat(header) {
+    const body  = header.nextElementSibling;
+    const arrow = header.querySelector('.toss-cat-arrow');
+    const isOpen = body.classList.contains('open');
+    body.classList.toggle('open', !isOpen);
+    arrow.classList.toggle('open', !isOpen);
+}
+
 function renderTossResult(result, filename) {
     const policies  = result.policies || [];
-    const allRiders = policies.flatMap(p => (p.riders || []).map(r => ({ ...r, insurer: p.insurer, product: p.product })));
+    const allRiders = flattenPolicyRiders(policies);
     const totalCount = allRiders.length;
 
     // 요약 바
@@ -1314,20 +1346,41 @@ function renderTossResult(result, filename) {
 
     document.getElementById('tossResultTitle').textContent = `"${filename}" — ${policies.length}개 상품 추출`;
 
-    // 상품별 보장항목 렌더링
+    // 상품별 카테고리 아코디언 렌더링
     const bodyEl = document.getElementById('tossResultBody');
-    bodyEl.innerHTML = policies.map(p => `
+    bodyEl.innerHTML = policies.map(p => {
+        const cats = p.categories || [];
+        const catHTML = cats.map((cat, ci) => {
+            const riders = cat.riders || [];
+            const isFirst = ci === 0;
+            return `
+            <div class="toss-cat-block">
+                <div class="toss-cat-header" onclick="toggleTossCat(this)">
+                    <span class="toss-cat-name">${cat.name || '기타'}</span>
+                    <span class="toss-cat-meta">
+                        <span>${riders.length}개 항목</span>
+                        <i class="toss-cat-arrow${isFirst ? ' open' : ''}">▾</i>
+                    </span>
+                </div>
+                <div class="toss-cat-body${isFirst ? ' open' : ''}">
+                    ${riders.map(r => `
+                        <div class="toss-rider-row">
+                            <span class="toss-rider-name">${r.name}</span>
+                            <span class="toss-rider-amt">${r.amount || '미확인'}</span>
+                        </div>`).join('')}
+                </div>
+            </div>`;
+        }).join('');
+
+        return `
         <div class="toss-policy-block">
             <div class="toss-policy-head">
                 <span>${p.insurer || '보험사 미확인'} · ${p.product || '상품명 미확인'}</span>
                 <span style="font-weight:400;color:var(--muted);">${p.start_date ? '가입 ' + p.start_date : ''}</span>
             </div>
-            ${(p.riders || []).map(r => `
-                <div class="toss-rider-row">
-                    <span class="toss-rider-name">${r.name}</span>
-                    <span class="toss-rider-amt">${r.amount || '미확인'}</span>
-                </div>`).join('')}
-        </div>`).join('');
+            ${catHTML}
+        </div>`;
+    }).join('');
 
     // 클라이언트사이드 보장 공백 진단
     const gaps = buildClientGapAnalysis(allRiders);
@@ -1353,15 +1406,13 @@ function renderTossResult(result, filename) {
 function applyTossToForm() {
     if (!tossExtracted) return;
     const policies = tossExtracted.policies || [];
-    const allRiders = policies.flatMap(p =>
-        (p.riders || []).map(r => ({
-            insurer:   p.insurer   || '',
-            product:   p.product   || '',
-            rider:     r.name      || '',
-            amount:    r.amount    || '',
-            startDate: p.start_date || ''
-        }))
-    );
+    const allRiders = flattenPolicyRiders(policies).map(r => ({
+        insurer:   r.insurer   || '',
+        product:   r.product   || '',
+        rider:     r.name      || '',
+        amount:    r.amount    || '',
+        startDate: policies.find(p => p.insurer === r.insurer)?.start_date || ''
+    }));
     if (!allRiders.length) { toast('추출된 특약이 없습니다.'); return; }
     clearAllRiders();
     allRiders.forEach(r => addRider(r));
