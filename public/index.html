@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>내 손안의 손해사정사</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --primary: #1d4ed8; --primary-dark: #1e3a8a; --primary-light: #dbeafe;
@@ -250,6 +251,34 @@
         .surg-cell { padding:5px 6px !important; }
         .surg-cell input.form-control { padding:5px 8px; font-size:12px; }
         .surg-auto-banner { background:#f0fdf4; border:1px solid #86efac; border-radius:var(--radius-sm); padding:8px 12px; font-size:12px; color:#166534; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+
+        /* ── Score Card ── */
+        .score-layout { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+        .score-circle-wrap { text-align:center; flex-shrink:0; }
+        .score-circle {
+            width:88px; height:88px; border-radius:50%; border:4px solid;
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            font-weight:800; margin:0 auto 6px;
+        }
+        .score-circle.gA { border-color:#10b981; color:#10b981; background:#f0fdf4; }
+        .score-circle.gB { border-color:#3b82f6; color:#3b82f6; background:#eff6ff; }
+        .score-circle.gC { border-color:#f59e0b; color:#f59e0b; background:#fffbeb; }
+        .score-circle.gD { border-color:#ef4444; color:#ef4444; background:#fff1f2; }
+        .score-num  { font-size:28px; line-height:1.1; }
+        .score-unit { font-size:11px; margin-top:-2px; }
+        .score-grade-lbl { font-size:13px; font-weight:700; margin-top:2px; }
+        .score-grade-lbl.gA { color:#10b981; } .score-grade-lbl.gB { color:#3b82f6; }
+        .score-grade-lbl.gC { color:#f59e0b; } .score-grade-lbl.gD { color:#ef4444; }
+        .score-radar-wrap { flex:0 0 190px; }
+        .score-bars { flex:1; min-width:160px; }
+        .sbar-row { margin-bottom:9px; }
+        .sbar-head { display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px; }
+        .sbar-head b { color:#334155; } .sbar-head span { color:#64748b; }
+        .sbar-track { height:7px; background:#e2e8f0; border-radius:4px; overflow:hidden; }
+        .sbar-fill  { height:100%; border-radius:4px; }
+        .sbar-fill.gA { background:#10b981; } .sbar-fill.gB { background:#3b82f6; }
+        .sbar-fill.gC { background:#f59e0b; } .sbar-fill.gD { background:#ef4444; }
+        @media(max-width:520px){ .score-radar-wrap{ flex:0 0 100%; order:3; } .score-bars{ flex:0 0 100%; } }
 
         /* ── PDB ── */
         .pdb-ref-banner { display:flex; align-items:center; gap:6px; background:#fef9c3; border:1px solid #fde047; border-radius:var(--radius-sm); padding:8px 12px; margin-bottom:10px; font-size:12px; color:#854d0e; }
@@ -1954,6 +1983,7 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한".`;
 // Render Results
 // ════════════════════════════════════════════════════════════
 function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = []) {
+    const scoreData = calcCoverageScore(riderData);
     const now = new Date();
     const ts = `${now.getFullYear()}.${now.getMonth()+1}.${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
     const ras = r.rider_analysis||[];
@@ -1984,6 +2014,7 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
     document.getElementById('resultsSection').innerHTML=`
     <div class="fade-in">
         ${ragBanner}${precBanner}
+        ${renderScoreCard(scoreData)}
         <div class="result-header">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
                 <div><h2>보장 분석 결과</h2><small>분석 시각: ${ts}</small></div>
@@ -2012,6 +2043,7 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
         </div>
     </div>`;
     document.getElementById('resultsSection').style.display='block';
+    drawRadarChart(scoreData.scores);
     setTimeout(()=>document.getElementById('resultsSection').scrollIntoView({behavior:'smooth',block:'start'}),80);
 }
 
@@ -2040,6 +2072,125 @@ function renderPrecedentSection(chunks) {
             <div class="prec-card-text">${c.text.slice(0, 400)}${c.text.length > 400 ? '…' : ''}</div>
         </div>`).join('');
     return `<div class="card"><div class="card-title">⚖️ 관련 판례</div>${items}</div>`;
+}
+
+// ════════════════════════════════════════════════════════════
+// 종합 보장 점수 & 레이더 차트
+// ════════════════════════════════════════════════════════════
+function calcCoverageScore(riders) {
+    const nm = r => r.rider || r.name || '';
+    const sumBy = re => riders.filter(r => re.test(nm(r))).reduce((s, r) => s + parseKorAmount(r.amount), 0);
+    const pct = (amt, target) => Math.min(100, target > 0 ? Math.round(amt / target * 100) : 0);
+
+    // 암진단비 (권장 3,000만원)
+    const cancerScore = pct(sumBy(/암\s*(진단|특약|보장)/), 30000000);
+
+    // 뇌혈관 — 뇌혈관질환진단비 없으면 0점 (권장 1,000만원)
+    const brainFull = riders.filter(r => /뇌혈관\s*질환\s*(진단|특약|보장)/.test(nm(r)));
+    const brainScore = brainFull.length
+        ? pct(brainFull.reduce((s, r) => s + parseKorAmount(r.amount), 0), 10000000)
+        : 0;
+
+    // 심장 — 허혈성심장질환진단비 없으면 0점 (권장 1,000만원)
+    const heartFull = riders.filter(r => /허혈성\s*심장\s*질환\s*(진단|특약|보장)/.test(nm(r)));
+    const heartScore = heartFull.length
+        ? pct(heartFull.reduce((s, r) => s + parseKorAmount(r.amount), 0), 10000000)
+        : 0;
+
+    // 종수술비 (권장 500만원)
+    const surgScore = pct(sumBy(/종\s*수술비|수술비\s*(II|Ⅱ|2)|(질병|상해)\s*종/), 5000000);
+
+    // 실손 (있으면 100점)
+    const lsiScore = riders.some(r => /실(손|비)\s*(의료)?|입원의료비|통원의료비|외래의료비|(질병|상해).{0,10}의료비|의료비\s*(특약|보장|담보)/.test(nm(r))) ? 100 : 0;
+
+    const scores = [cancerScore, brainScore, heartScore, surgScore, lsiScore];
+    const total  = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    return { total, scores };
+}
+
+function gradeOf(score) {
+    if (score >= 90) return { cls:'gA', label:'우수' };
+    if (score >= 70) return { cls:'gB', label:'양호' };
+    if (score >= 50) return { cls:'gC', label:'보통' };
+    return { cls:'gD', label:'부족' };
+}
+
+function renderScoreCard(scoreData) {
+    const { total, scores } = scoreData;
+    const g = gradeOf(total);
+    const axes  = ['암진단비', '뇌혈관', '심장', '종수술비', '실손'];
+    const bars  = axes.map((lbl, i) => {
+        const s  = scores[i];
+        const sg = gradeOf(s);
+        return `<div class="sbar-row">
+            <div class="sbar-head"><b>${lbl}</b><span>${s}점</span></div>
+            <div class="sbar-track"><div class="sbar-fill ${sg.cls}" style="width:${s}%"></div></div>
+        </div>`;
+    }).join('');
+    return `
+    <div class="card">
+        <div class="card-title">📊 종합 보장 점수</div>
+        <div class="score-layout">
+            <div class="score-circle-wrap">
+                <div class="score-circle ${g.cls}">
+                    <div class="score-num">${total}</div>
+                    <div class="score-unit">점</div>
+                </div>
+                <div class="score-grade-lbl ${g.cls}">${g.label}</div>
+            </div>
+            <div class="score-radar-wrap">
+                <canvas id="coverageRadarChart" width="190" height="190"></canvas>
+            </div>
+            <div class="score-bars">${bars}</div>
+        </div>
+    </div>`;
+}
+
+function drawRadarChart(scores) {
+    const canvas = document.getElementById('coverageRadarChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    if (window._coverageChart) { window._coverageChart.destroy(); window._coverageChart = null; }
+    window._coverageChart = new Chart(canvas, {
+        type: 'radar',
+        data: {
+            labels: ['암진단비', '뇌혈관', '심장', '종수술비', '실손'],
+            datasets: [
+                {
+                    label: '현재 보장',
+                    data: scores,
+                    backgroundColor: 'rgba(29,78,216,0.12)',
+                    borderColor: 'rgba(29,78,216,0.85)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgba(29,78,216,1)',
+                    pointRadius: 3,
+                },
+                {
+                    label: '권장 기준',
+                    data: [100, 100, 100, 100, 100],
+                    backgroundColor: 'rgba(16,185,129,0.04)',
+                    borderColor: 'rgba(16,185,129,0.55)',
+                    borderWidth: 1.5,
+                    borderDash: [5, 4],
+                    pointRadius: 0,
+                },
+            ],
+        },
+        options: {
+            scales: {
+                r: {
+                    min: 0, max: 100,
+                    ticks: { stepSize: 25, font: { size: 9 }, color: '#94a3b8', backdropColor: 'transparent' },
+                    grid:  { color: '#e2e8f0' },
+                    pointLabels: { font: { size: 10, weight: '600' }, color: '#334155' },
+                },
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}점` } },
+            },
+            animation: { duration: 500 },
+        },
+    });
 }
 
 function fmtAmount(n) {
