@@ -788,127 +788,69 @@ function parseAPIJson(data) {
 // ════════════════════════════════════════════════════════════
 // 약관 지식 DB (IndexedDB 기반 로컬 RAG)
 // ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// KDB — Supabase 벡터 RAG 클라이언트 (server API 경유)
+// IndexedDB 기반 KDB와 동일한 인터페이스를 유지합니다.
+// ════════════════════════════════════════════════════════════
 const KDB = (() => {
-    const DB_NAME  = 'InsuranceKDB';
-    const VERSION  = 1;
-    const CHUNK_ST = 'chunks';
-    const DOC_ST   = 'documents';
-    let _db = null;
-
-    function openDB() {
-        if (_db) return Promise.resolve(_db);
-        return new Promise((resolve, reject) => {
-            const req = indexedDB.open(DB_NAME, VERSION);
-            req.onupgradeneeded = e => {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains(DOC_ST))
-                    db.createObjectStore(DOC_ST, { keyPath: 'id' });
-                if (!db.objectStoreNames.contains(CHUNK_ST)) {
-                    const cs = db.createObjectStore(CHUNK_ST, { keyPath: 'id', autoIncrement: true });
-                    cs.createIndex('docId', 'docId', { unique: false });
-                }
-            };
-            req.onsuccess = e => { _db = e.target.result; resolve(_db); };
-            req.onerror   = e => reject(e.target.error);
-        });
+    function authHeaders() {
+        return {
+            'Content-Type':    'application/json',
+            'x-access-token':  sessionStorage.getItem('access_token') || '',
+        };
     }
 
-    // 문단·조항 경계로 청크 분할, 오버랩 포함
-    function chunkText(text, size = 400, overlap = 80) {
-        const paras = text.split(/\n{2,}|\n(?=제\s*\d+조|[①-⑩○●]|\d+\.\s)/)
-                          .map(p => p.trim()).filter(p => p.length > 20);
-        const chunks = [];
-        let buf = '';
-        for (const para of paras) {
-            if (buf && (buf + '\n' + para).length > size) {
-                chunks.push(buf.trim());
-                buf = buf.length > overlap ? buf.slice(-overlap) + '\n' + para : para;
-            } else {
-                buf = buf ? buf + '\n' + para : para;
-            }
-        }
-        if (buf.trim().length >= 40) chunks.push(buf.trim());
-        return chunks;
-    }
-
-    // 한글 어절 + 2-gram 토크나이징
-    function tokenize(text) {
-        const tokens = new Set();
-        text.split(/[\s\n,.·\-\(\)「」【】\[\]\/]+/)
-            .filter(w => w.length >= 2).forEach(w => tokens.add(w));
-        const han = text.replace(/[^가-힣]/g, '');
-        for (let i = 0; i < han.length - 1; i++) tokens.add(han.slice(i, i + 2));
-        return tokens;
-    }
-
-    function idbGetAll(store) {
-        return new Promise((res, rej) => {
-            const req = _db.transaction(store, 'readonly').objectStore(store).getAll();
-            req.onsuccess = e => res(e.target.result);
-            req.onerror   = e => rej(e.target.error);
-        });
-    }
-    function idbPut(store, data) {
-        return new Promise((res, rej) => {
-            const req = _db.transaction(store, 'readwrite').objectStore(store).put(data);
-            req.onsuccess = e => res(e.target.result);
-            req.onerror   = e => rej(e.target.error);
-        });
-    }
-
+    // 약관 PDF 텍스트를 Supabase에 벡터로 저장
     async function addDocument(id, name, fullText) {
-        await openDB();
-        await deleteDocument(id);
-        const chunks = chunkText(fullText);
-        await idbPut(DOC_ST, { id, name, chunkCount: chunks.length, addedAt: Date.now() });
-        const st = _db.transaction(CHUNK_ST, 'readwrite').objectStore(CHUNK_ST);
-        for (const [, text] of chunks.entries()) {
-            await new Promise((res, rej) => {
-                const r = st.add({ docId: id, docName: name, text, tokens: [...tokenize(text)] });
-                r.onsuccess = res; r.onerror = rej;
-            });
-        }
-        return chunks.length;
+        const res = await fetch('/api/rag-upload', {
+            method:  'POST',
+            headers: authHeaders(),
+            body:    JSON.stringify({ doc_id: id, doc_name: name, text: fullText }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'RAG 업로드 실패');
+        return data.chunks;  // 저장된 청크 수 반환
     }
 
-    async function search(query, topK = 5) {
-        await openDB();
-        const all = await idbGetAll(CHUNK_ST);
-        if (!all.length) return [];
-        const qTok = tokenize(query);
-        if (!qTok.size) return [];
-        return all
-            .map(c => {
-                const cTok = new Set(c.tokens);
-                let hit = 0;
-                for (const t of qTok) if (cTok.has(t)) hit++;
-                return { ...c, score: hit / qTok.size };
-            })
-            .filter(c => c.score > 0.02)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, topK);
+    // 쿼리와 유사한 약관 청크를 벡터 검색으로 반환
+    async function search(query, topK = 6) {
+        const res = await fetch('/api/rag-search', {
+            method:  'POST',
+            headers: authHeaders(),
+            body:    JSON.stringify({ query, top_k: topK }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'RAG 검색 실패');
+        // buildRAGContext가 기대하는 형태로 변환
+        return (data.chunks || []).map(c => ({
+            text:    c.chunk_text,
+            docName: c.doc_name,
+            score:   c.similarity,
+        }));
     }
 
+    // 저장된 약관 문서 목록 반환
     async function listDocuments() {
-        await openDB();
-        return idbGetAll(DOC_ST);
+        const res = await fetch('/api/rag-list', { headers: authHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '목록 조회 실패');
+        return (data.docs || []).map(d => ({
+            id:         d.doc_id,
+            name:       d.doc_name,
+            chunkCount: Number(d.chunk_count),
+            addedAt:    new Date(d.created_at).getTime(),
+        }));
     }
 
+    // 약관 문서 삭제
     async function deleteDocument(id) {
-        await openDB();
-        await new Promise((res, rej) => {
-            const st = _db.transaction(CHUNK_ST, 'readwrite').objectStore(CHUNK_ST);
-            const req = st.index('docId').openCursor(IDBKeyRange.only(id));
-            req.onsuccess = e => {
-                const cur = e.target.result;
-                if (cur) { cur.delete(); cur.continue(); } else res();
-            };
-            req.onerror = rej;
+        const res = await fetch('/api/rag-delete', {
+            method:  'POST',
+            headers: authHeaders(),
+            body:    JSON.stringify({ doc_id: id }),
         });
-        await new Promise((res, rej) => {
-            const r = _db.transaction(DOC_ST, 'readwrite').objectStore(DOC_ST).delete(id);
-            r.onsuccess = res; r.onerror = rej;
-        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '삭제 실패');
     }
 
     return { addDocument, search, listDocuments, deleteDocument };

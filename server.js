@@ -23,6 +23,18 @@ const http  = require('http');
 const https = require('https');
 const { makeToken, validateToken } = require('./api/_token');
 
+// ─── RAG API 핸들러 ──────────────────────────────────────────
+const ragUpload = require('./api/rag-upload');
+const ragSearch = require('./api/rag-search');
+const ragList   = require('./api/rag-list');
+const ragDelete = require('./api/rag-delete');
+
+// Vercel res.status / res.json 호환 심
+function adaptRes(res) {
+    if (!res.status) res.status = code => { res.statusCode = code; return res; };
+    if (!res.json)   res.json   = data => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)); };
+}
+
 const PORT    = process.env.PORT || 3000;
 const STATIC  = path.join(__dirname, 'public');
 
@@ -104,6 +116,13 @@ const server = http.createServer(async (req, res) => {
     console.log(`[${new Date().toLocaleTimeString('ko-KR')}] ${method} ${reqUrl}`);
 
     res.setHeader('Cache-Control', 'no-store');
+    adaptRes(res);
+
+    // RAG API
+    if (method === 'POST' && reqUrl === '/api/rag-upload') { ragUpload(req, res); return; }
+    if (method === 'POST' && reqUrl === '/api/rag-search') { ragSearch(req, res); return; }
+    if (method === 'GET'  && reqUrl === '/api/rag-list')   { ragList(req, res);   return; }
+    if (method === 'POST' && reqUrl === '/api/rag-delete') { ragDelete(req, res); return; }
 
     // POST /api/auth — 비밀번호 검증
     if (method === 'POST' && reqUrl === '/api/auth') {
