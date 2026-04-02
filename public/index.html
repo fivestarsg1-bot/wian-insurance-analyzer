@@ -1629,6 +1629,24 @@ async function extractRidersFromImage(file) {
     return parseAPIJson(data);
 }
 
+// 텍스트에서 토스인슈어런스 보장분석 리포트 여부 감지
+function _isTossReport(text) {
+    return /토스인슈어런스|tossinsurance|상품별\s*보험\s*가입현황|보험\s*가입현황|상품별\s*가입현황/i.test(text);
+}
+
+// extractTossReport 결과(nested)를 flat riders 배열로 변환
+// flattenPolicyRiders 재사용 + 각 rider에 insurer/product 보존
+function _tossResultToRiders(tossResult) {
+    const policies = tossResult.policies || [];
+    return flattenPolicyRiders(policies).map(r => ({
+        insurer:   r.insurer   || '',
+        product:   r.product   || '',
+        rider:     r.name      || '',
+        amount:    r.amount    || '',
+        startDate: policies.find(p => p.insurer === r.insurer)?.start_date || '',
+    }));
+}
+
 async function handleMultiPdfAdd(type, file) {
     if (!file) return;
     const isPDF  = file.type === 'application/pdf';
@@ -1644,21 +1662,38 @@ async function handleMultiPdfAdd(type, file) {
     mpdfRenderList(type === 'current' ? 'recommend' : 'current');
 
     try {
-        let result;
+        let riders;
         if (isImg) {
-            result = await extractRidersFromImage(file);
+            // 이미지: 기존 Vision API 파서 (flat 형태 반환)
+            const result = await extractRidersFromImage(file);
+            riders = (result.riders || []).map(r => ({
+                insurer:   result.insurer || '',
+                product:   result.product || '',
+                rider:     r.name          || '',
+                amount:    r.amount         || '',
+                startDate: r.start_date     || result.policy_start_date || '',
+            }));
         } else {
             const { text } = await extractPDFText(file, () => {});
             if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
-            result = await extractRidersWithClaude(text);
+
+            if (type === 'current' && _isTossReport(text)) {
+                // 기존 보장 + 토스 리포트 → extractTossReport (파이프·쉼표 처리 우수)
+                const result = await extractTossReport(text);
+                riders = _tossResultToRiders(result);
+            } else {
+                // 추천 상품 또는 일반 보험증권 → extractRidersWithClaude
+                const result = await extractRidersWithClaude(text);
+                riders = (result.riders || []).map(r => ({
+                    insurer:   result.insurer || '',
+                    product:   result.product || '',
+                    rider:     r.name          || '',
+                    amount:    r.amount         || '',
+                    startDate: r.start_date     || result.policy_start_date || '',
+                }));
+            }
         }
-        const riders = (result.riders || []).map(r => ({
-            insurer:   result.insurer || '',
-            product:   result.product || '',
-            rider:     r.name          || '',
-            amount:    r.amount         || '',
-            startDate: r.start_date     || result.policy_start_date || '',
-        }));
+
         multiPdfState[type][idx] = { name: file.name, loading: false, error: null, riders, isImg };
         toast(`✓ "${file.name}" — ${riders.length}개 특약 추출 완료`);
     } catch (err) {
