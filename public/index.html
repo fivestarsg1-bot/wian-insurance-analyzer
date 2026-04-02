@@ -380,6 +380,20 @@
         .toss-cat-body.open { display:block; }
         .toss-summary-bar { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius-sm); padding:8px 14px; font-size:12px; color:#166534; font-weight:600; margin-bottom:10px; }
 
+        /* ── 보장 현황 체크리스트 (Toss 자동 분석) ── */
+        .cl-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:4px; }
+        @media(max-width:540px){ .cl-grid { grid-template-columns:1fr; } }
+        .cl-item { display:flex; gap:12px; align-items:flex-start; padding:13px 14px; border-radius:12px; border:1.5px solid transparent; transition:box-shadow .15s; }
+        .cl-item.ok   { background:#f0fdf4; border-color:#bbf7d0; }
+        .cl-item.low  { background:#fffbeb; border-color:#fde68a; }
+        .cl-item.miss { background:#fff5f5; border-color:#fecaca; }
+        .cl-icon  { font-size:20px; flex-shrink:0; margin-top:1px; line-height:1; }
+        .cl-label { font-size:13px; font-weight:700; color:var(--text); margin-bottom:2px; }
+        .cl-detail{ font-size:11px; line-height:1.5; }
+        .cl-detail.ok   { color:#166534; }
+        .cl-detail.low  { color:#92400e; }
+        .cl-detail.miss { color:#991b1b; }
+
         /* ── Gap Analysis ── */
         .gap-section { background:linear-gradient(135deg,#fff7ed,#fffbeb); border:1px solid #fed7aa; border-radius:var(--radius); padding:20px; margin-bottom:14px; }
         .gap-title-bar { font-size:15px; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
@@ -530,6 +544,12 @@
                 <button class="btn btn-success btn-sm" onclick="applyTossToForm()">✓ 전체 특약 폼에 적용</button>
             </div>
         </div>
+    </div>
+
+    <!-- 토스 보장 현황 자동 대시보드 -->
+    <div id="tossDashboard" style="display:none;">
+        <div id="tossDashboardScore"></div>
+        <div id="tossDashboardChecklist"></div>
     </div>
 
     <!-- ① PDF 업로드 -->
@@ -1713,9 +1733,13 @@ function renderTossResult(result, filename) {
     document.getElementById('tossResultWrap').style.display = 'block';
     document.getElementById('tossResultWrap').classList.add('fade-in');
     if (result.note) toast('ℹ ' + result.note);
+
+    // 자동 보장 현황 대시보드
+    applyTossToForm(true); // 폼에 조용히 적용 (AI 분석 준비)
+    showTossDashboard(allRiders);
 }
 
-function applyTossToForm() {
+function applyTossToForm(silent = false) {
     if (!tossExtracted) return;
     const policies = tossExtracted.policies || [];
     const allRiders = flattenPolicyRiders(policies).map(r => ({
@@ -1725,18 +1749,83 @@ function applyTossToForm() {
         amount:    r.amount    || '',
         startDate: policies.find(p => p.insurer === r.insurer)?.start_date || ''
     }));
-    if (!allRiders.length) { toast('추출된 특약이 없습니다.'); return; }
+    if (!allRiders.length) { if (!silent) toast('추출된 특약이 없습니다.'); return; }
     clearAllRiders();
     allRiders.forEach(r => addRider(r));
-    toast(`✓ ${allRiders.length}개 보장항목이 폼에 적용되었습니다.`);
-    document.getElementById('ridersContainer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!silent) {
+        toast(`✓ ${allRiders.length}개 보장항목이 폼에 적용되었습니다.`);
+        document.getElementById('ridersContainer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 function resetToss() {
     tossExtracted = null;
     document.getElementById('tossResultWrap').style.display = 'none';
+    document.getElementById('tossDashboard').style.display = 'none';
     setTossProgress(false);
     document.getElementById('tossFileInput').value = '';
+}
+
+// ════════════════════════════════════════════════════════════
+// 토스 보장 현황 자동 대시보드
+// ════════════════════════════════════════════════════════════
+function showTossDashboard(riders) {
+    const scoreData  = calcCoverageScore(riders);
+    const gaps       = buildClientGapAnalysis(riders);
+
+    document.getElementById('tossDashboardScore').innerHTML    = renderScoreCard(scoreData);
+    document.getElementById('tossDashboardChecklist').innerHTML = renderCoverageChecklist(gaps);
+
+    const el = document.getElementById('tossDashboard');
+    el.style.display = 'block';
+    el.classList.add('fade-in');
+
+    // score bar 애니메이션 (두 번의 rAF로 0→target 보장)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        el.querySelectorAll('.sbar-fill[data-target]').forEach(b => {
+            b.style.width = b.dataset.target + '%';
+        });
+    }));
+
+    // 레이더 차트는 DOM 렌더 후 그리기
+    setTimeout(() => {
+        drawRadarChart(scoreData.scores);
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+}
+
+function renderCoverageChecklist(gaps) {
+    const okCount   = gaps.filter(g => g.status === '적정').length;
+    const lowCount  = gaps.filter(g => g.status === '부족').length;
+    const missCount = gaps.filter(g => g.status === '미가입').length;
+
+    const items = gaps.map(g => {
+        const cls    = g.status === '적정' ? 'ok' : g.status === '부족' ? 'low' : 'miss';
+        const icon   = g.status === '적정' ? '✅' : g.status === '부족' ? '⚠️' : '❌';
+        const detail = g.status === '적정'
+            ? g.current
+            : g.status === '부족'
+            ? `현재 ${g.current} · 권장 ${g.recommend}`
+            : `미가입 · 권장 ${g.recommend}`;
+        return `<div class="cl-item ${cls}">
+            <div class="cl-icon">${icon}</div>
+            <div>
+                <div class="cl-label">${g.label}</div>
+                <div class="cl-detail ${cls}">${detail}</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    const badges = [
+        okCount   ? `<span class="badge badge-green">${okCount}개 적정</span>` : '',
+        lowCount  ? `<span class="badge" style="background:#fef3c7;color:#92400e;">${lowCount}개 부족</span>` : '',
+        missCount ? `<span class="badge" style="background:#fee2e2;color:#991b1b;">${missCount}개 미가입</span>` : '',
+    ].filter(Boolean).join('');
+
+    return `<div class="card">
+        <div class="card-title">📋 보장 현황 체크리스트 <span style="display:inline-flex;gap:6px;">${badges}</span></div>
+        <div class="cl-grid">${items}</div>
+    </div>`;
 }
 
 // ════════════════════════════════════════════════════════════
