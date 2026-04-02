@@ -2141,7 +2141,7 @@ const COVERAGE_CHECKLIST = [
     { id:'heart',
       label:'심장 진단비',
       re:/(심근경색|허혈성\s*심장)/,
-      reFull:/허혈성\s*심장\s*질환\s*(진단|특약|보장)/,
+      reFull:/허혈성\s*심장\s*질환\s*(진단|특약|보장)|통합\s*형?\s*심장\s*관련\s*(진단|특약|보장)/,
       recommend:'허혈성심장질환진단비 1,000만원 이상', threshold:10000000 },
     { id:'surgery',
       label:'종수술비',
@@ -2157,7 +2157,7 @@ const COVERAGE_CHECKLIST = [
       recommend:'3,000만원 이상', threshold:30000000 },
     { id:'circ',
       label:'순환계질환치료비',
-      re:/순환계\s*(질환)?\s*(치료|진단)|뇌심\s*(혈관)?\s*(치료|보장)|뇌·?심장\s*(치료|보장)|특정순환계질환\s*(통합치료비)?|순환계질환통합치료비/,
+      re:/순환계\s*(질환)?\s*(\([^)]*\))?\s*(주요\s*)?(치료|진단)|뇌심\s*(혈관)?\s*(치료|보장)|뇌·?심장\s*(치료|보장)|특정순환계질환\s*(통합치료비)?|순환계질환통합치료비/,
       recommend:'2,000만원 이상', threshold:20000000 },
 ];
 
@@ -2210,7 +2210,7 @@ function parseKorAmount(s) {
 // ── 종수술비 필터 ────────────────────────────────────────────
 // 포함: (질병|상해)[1-5]?종수술비, 수술비Ⅱ/II/2종
 // 제외: 암·뇌혈관질환·허혈성심장질환·척추·대장 등 특정 질병명이 앞에 붙은 것
-const _SURG_POS_RE = /(질병|상해)\s*[\[\(갱신형\]\)]*\s*[1-5]?\s*종수술비|수술비\s*(Ⅱ|II|2종)/;
+const _SURG_POS_RE = /(질병|상해)\s*(\[갱신형\]|\(갱신형\))?\s*([1-5]-[1-5]|[1-5])?\s*(종수술비|수술비\s*(Ⅱ|II|2종))/;
 const _SURG_EXCL_RE = /(암|뇌혈관\s*질환?|허혈성\s*심장\s*질환?|척추|대장|소화기|간\s*질환?|폐|관절|특정\s*질병)[1-5]?\s*종수술비/;
 
 function _filterSurgeryRiders(riders) {
@@ -3064,7 +3064,7 @@ function calcCoverageScore(riders) {
         : 0;
 
     // 심장 — 허혈성심장질환진단비 없으면 0점 (권장 1,000만원)
-    const heartFull = riders.filter(r => /허혈성\s*심장\s*질환\s*(진단|특약|보장)/.test(nm(r)));
+    const heartFull = riders.filter(r => /허혈성\s*심장\s*질환\s*(진단|특약|보장)|통합\s*형?\s*심장\s*관련\s*(진단|특약|보장)/.test(nm(r)));
     const heartScore = heartFull.length
         ? pct(heartFull.reduce((s, r) => s + parseKorAmount(r.amount), 0), 10000000)
         : 0;
