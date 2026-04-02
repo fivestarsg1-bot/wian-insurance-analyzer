@@ -1723,16 +1723,20 @@ async function handleMultiPdfAdd(type, file) {
 }
 
 function runMultiPdfAnalysis() {
-    const currentRiders  = multiPdfState.current.flatMap(f => f.riders || []);
-    const recommendRiders= multiPdfState.recommend.flatMap(f => f.riders || []);
-    const combinedRiders = [...currentRiders, ...recommendRiders];
+    const currentRiders   = multiPdfState.current.flatMap(f => f.riders || []);
+    const recommendRiders = multiPdfState.recommend.flatMap(f => f.riders || []);
+    const combinedRiders  = [...currentRiders, ...recommendRiders];
 
     if (!currentRiders.length) { toast('기존 보장 PDF에서 특약을 먼저 추출해주세요.'); return; }
 
-    // 폼에 현재 보장 적용
+    // 폼에 기존 보장 + 추천 상품 합산 반영 (체크리스트·AI 분석에 모두 포함)
     clearAllRiders();
-    currentRiders.forEach(r => addRider(r));
+    combinedRiders.forEach(r => addRider(r));
     expandAllGroups();
+
+    if (recommendRiders.length) {
+        toast(`기존 ${currentRiders.length}개 + 추천 ${recommendRiders.length}개 = 합계 ${combinedRiders.length}개 특약으로 분석합니다.`);
+    }
 
     showCompareDashboard(currentRiders, recommendRiders, combinedRiders);
 }
@@ -1780,15 +1784,15 @@ function showCompareDashboard(currentRiders, recommendRiders, combinedRiders) {
         </div>
 
         <div id="cpAfter" class="compare-tab-pane">
-            ${recommendRiders.length ? `
-            ${fileNames.recommend ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">📂 현재 + ${fileNames.recommend}</div>` : ''}
+            ${combinedRiders.length > currentRiders.length ? `
+            ${fileNames.recommend ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">📂 현재 + ${fileNames.recommend} (합계 ${combinedRiders.length}개 특약)</div>` : ''}
             ${mpdfScoreRow(afterScore, curScore)}
             ${renderCoverageChecklist(afterGaps)}
             ` : '<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px;">추천 상품 PDF를 추가해주세요.</div>'}
         </div>
 
         <div id="cpDiff" class="compare-tab-pane">
-            ${recommendRiders.length
+            ${combinedRiders.length > currentRiders.length
                 ? mpdfDiffContent(curGaps, afterGaps, curScore, afterScore, fileNames.recommend)
                 : '<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px;">추천 상품 PDF를 추가해주세요.</div>'}
         </div>
