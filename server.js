@@ -24,10 +24,16 @@ const https = require('https');
 const { makeToken, validateToken } = require('./api/_token');
 
 // ─── RAG API 핸들러 ──────────────────────────────────────────
-const ragUpload = require('./api/rag-upload');
-const ragSearch = require('./api/rag-search');
-const ragList   = require('./api/rag-list');
-const ragDelete = require('./api/rag-delete');
+const ragUpload  = require('./api/rag-upload');
+const ragSearch  = require('./api/rag-search');
+const ragList    = require('./api/rag-list');
+const ragDelete  = require('./api/rag-delete');
+
+// ─── 판례 DB API 핸들러 ──────────────────────────────────────
+const precUpload = require('./api/precedent-upload');
+const precSearch = require('./api/precedent-search');
+const precList   = require('./api/precedent-list');
+const precDelete = require('./api/precedent-delete');
 
 // Vercel res.status / res.json 호환 심
 function adaptRes(res) {
@@ -118,11 +124,17 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     adaptRes(res);
 
-    // RAG API
+    // RAG API (약관)
     if (method === 'POST' && reqUrl === '/api/rag-upload') { ragUpload(req, res); return; }
     if (method === 'POST' && reqUrl === '/api/rag-search') { ragSearch(req, res); return; }
     if (method === 'GET'  && reqUrl === '/api/rag-list')   { ragList(req, res);   return; }
     if (method === 'POST' && reqUrl === '/api/rag-delete') { ragDelete(req, res); return; }
+
+    // 판례 DB API
+    if (method === 'POST' && reqUrl === '/api/precedent-upload') { precUpload(req, res); return; }
+    if (method === 'POST' && reqUrl === '/api/precedent-search') { precSearch(req, res); return; }
+    if (method === 'GET'  && reqUrl === '/api/precedent-list')   { precList(req, res);   return; }
+    if (method === 'POST' && reqUrl === '/api/precedent-delete') { precDelete(req, res); return; }
 
     // POST /api/auth — 비밀번호 검증
     if (method === 'POST' && reqUrl === '/api/auth') {

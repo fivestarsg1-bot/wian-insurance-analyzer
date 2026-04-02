@@ -5,7 +5,11 @@
     "api/messages.js":   { "maxDuration": 60 },
     "api/rag-upload.js": { "maxDuration": 60 },
     "api/rag-search.js": { "maxDuration": 30 },
-    "api/rag-list.js":   { "maxDuration": 10 },
-    "api/rag-delete.js": { "maxDuration": 10 }
+    "api/rag-list.js":          { "maxDuration": 10 },
+    "api/rag-delete.js":        { "maxDuration": 10 },
+    "api/precedent-upload.js":  { "maxDuration": 60 },
+    "api/precedent-search.js":  { "maxDuration": 30 },
+    "api/precedent-list.js":    { "maxDuration": 10 },
+    "api/precedent-delete.js":  { "maxDuration": 10 }
   }
 }

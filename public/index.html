@@ -251,6 +251,12 @@
         .surg-cell input.form-control { padding:5px 8px; font-size:12px; }
         .surg-auto-banner { background:#f0fdf4; border:1px solid #86efac; border-radius:var(--radius-sm); padding:8px 12px; font-size:12px; color:#166534; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
 
+        /* ── PDB ── */
+        .pdb-ref-banner { display:flex; align-items:center; gap:6px; background:#fef9c3; border:1px solid #fde047; border-radius:var(--radius-sm); padding:8px 12px; margin-bottom:10px; font-size:12px; color:#854d0e; }
+        .prec-card { background:#fffbeb; border:1px solid #fde68a; border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:8px; }
+        .prec-card-name { font-size:12px; font-weight:700; color:#92400e; margin-bottom:4px; }
+        .prec-card-text { font-size:12px; color:#44403c; line-height:1.6; white-space:pre-wrap; }
+
         /* ── Toss Card ── */
         .toss-header-bar { background:linear-gradient(135deg,#0055ff,#3b82f6); color:white; border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:12px; display:flex; align-items:center; gap:12px; }
         .toss-policy-block { margin-bottom:8px; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
@@ -449,7 +455,24 @@
         </div>
     </div>
 
-    <!-- ② 수술 분류표 -->
+    <!-- ② 판례 DB -->
+    <div class="card" id="pdbCard">
+        <div class="card-title" style="flex-wrap:wrap;gap:8px;">
+            ⚖️ 판례 DB <span class="badge" style="background:#fef9c3;color:#854d0e;" id="pdbBadge">0개</span>
+            <div style="flex:1;"></div>
+            <button class="btn btn-outline btn-sm" style="border-color:#d97706;color:#d97706;" onclick="document.getElementById('pdbFileInput').click()">+ 판례 PDF 추가</button>
+            <input type="file" id="pdbFileInput" accept=".pdf" style="display:none" onchange="handlePDBUpload(this.files[0])">
+        </div>
+        <div id="pdbList">
+            <div class="kdb-empty">저장된 판례가 없습니다.<br><span style="font-size:12px;">금융감독원 분쟁조정 사례 PDF를 추가하면 보장 분석 시 자동으로 참조합니다.</span></div>
+        </div>
+        <div id="pdbProgress" style="display:none;" class="pdf-progress">
+            <div class="pdf-progress-text" id="pdbProgressText"></div>
+            <div class="pdf-progress-bar-wrap"><div class="pdf-progress-bar" id="pdbProgressBar" style="width:0%"></div></div>
+        </div>
+    </div>
+
+    <!-- ③ 수술 분류표 -->
     <div class="card" id="surgTableCard">
         <div class="card-title" style="cursor:pointer;user-select:none;" onclick="toggleSurgTable()">
             🔪 수술 분류표
@@ -857,6 +880,68 @@ const KDB = (() => {
 })();
 
 // ════════════════════════════════════════════════════════════
+// PDB — 판례 DB (precedent_chunks)
+// ════════════════════════════════════════════════════════════
+const PDB = (() => {
+    function authHeaders() {
+        return {
+            'Content-Type':   'application/json',
+            'x-access-token': sessionStorage.getItem('access_token') || '',
+        };
+    }
+
+    async function addDocument(id, name, fullText) {
+        const res = await fetch('/api/precedent-upload', {
+            method:  'POST',
+            headers: authHeaders(),
+            body:    JSON.stringify({ doc_id: id, doc_name: name, text: fullText }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '판례 업로드 실패');
+        return data.chunks;
+    }
+
+    async function search(query, topK = 4) {
+        const res = await fetch('/api/precedent-search', {
+            method:  'POST',
+            headers: authHeaders(),
+            body:    JSON.stringify({ query, top_k: topK }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '판례 검색 실패');
+        return (data.chunks || []).map(c => ({
+            text:    c.chunk_text,
+            docName: c.doc_name,
+            score:   c.similarity,
+        }));
+    }
+
+    async function listDocuments() {
+        const res = await fetch('/api/precedent-list', { headers: authHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '목록 조회 실패');
+        return (data.docs || []).map(d => ({
+            id:         d.doc_id,
+            name:       d.doc_name,
+            chunkCount: Number(d.chunk_count),
+            addedAt:    new Date(d.created_at).getTime(),
+        }));
+    }
+
+    async function deleteDocument(id) {
+        const res = await fetch('/api/precedent-delete', {
+            method:  'POST',
+            headers: authHeaders(),
+            body:    JSON.stringify({ doc_id: id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '삭제 실패');
+    }
+
+    return { addDocument, search, listDocuments, deleteDocument };
+})();
+
+// ════════════════════════════════════════════════════════════
 // Authenticated fetch
 async function apiFetch(url, body) {
     const res = await fetch(url, {
@@ -1143,6 +1228,66 @@ async function deleteKDBDoc(id) {
     renderKDBList();
 }
 
+// ════════════════════════════════════════════════════════════
+// 판례 DB 업로드 / 목록 / 삭제
+// ════════════════════════════════════════════════════════════
+async function handlePDBUpload(file) {
+    if (!file || file.type !== 'application/pdf') { toast('PDF 파일만 업로드 가능합니다.'); return; }
+    document.getElementById('pdbFileInput').value = '';
+    document.getElementById('pdbProgress').style.display = 'block';
+    document.getElementById('pdbProgressText').textContent = 'PDF 읽는 중…';
+    document.getElementById('pdbProgressBar').style.width = '10%';
+    try {
+        const { text } = await extractPDFText(file, (p, tot) => {
+            document.getElementById('pdbProgressText').textContent = `텍스트 추출 중… (${p}/${tot}페이지)`;
+            document.getElementById('pdbProgressBar').style.width = Math.round(10 + p / tot * 60) + '%';
+        });
+        if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
+        document.getElementById('pdbProgressText').textContent = '판례 DB에 저장 중…';
+        document.getElementById('pdbProgressBar').style.width = '80%';
+        const id   = 'prec_' + Date.now();
+        const name = file.name.replace(/\.pdf$/i, '');
+        const n    = await PDB.addDocument(id, name, text);
+        document.getElementById('pdbProgressBar').style.width = '100%';
+        document.getElementById('pdbProgressText').textContent = `완료! (${n}개 청크 저장됨)`;
+        setTimeout(() => { document.getElementById('pdbProgress').style.display = 'none'; }, 1500);
+        toast(`판례 저장 완료 (${n}개 청크)`);
+        renderPDBList();
+    } catch (err) {
+        document.getElementById('pdbProgress').style.display = 'none';
+        toast('⚠ ' + err.message.split('\n')[0]);
+    }
+}
+
+async function renderPDBList() {
+    const el    = document.getElementById('pdbList');
+    const badge = document.getElementById('pdbBadge');
+    try {
+        const docs = await PDB.listDocuments();
+        badge.textContent = docs.length + '개';
+        if (!docs.length) {
+            el.innerHTML = '<div class="kdb-empty">저장된 판례가 없습니다.<br><span style="font-size:12px;">금융감독원 분쟁조정 사례 PDF를 추가하면 보장 분석 시 자동으로 참조합니다.</span></div>';
+            return;
+        }
+        el.innerHTML = docs.map(d => `
+            <div class="kdb-doc-item">
+                <span style="font-size:16px;">⚖️</span>
+                <span class="kdb-doc-name">${d.name}</span>
+                <span class="kdb-doc-meta">${d.chunkCount}청크</span>
+                <button class="kdb-doc-del" onclick="deletePrecDoc('${d.id}')" title="삭제">×</button>
+            </div>`).join('');
+    } catch (_) {
+        badge.textContent = '-';
+    }
+}
+
+async function deletePrecDoc(id) {
+    if (!confirm('이 판례를 DB에서 삭제하시겠습니까?')) return;
+    await PDB.deleteDocument(id);
+    toast('삭제되었습니다.');
+    renderPDBList();
+}
+
 // 진단+특약명으로 DB 검색 → 프롬프트 주입용 컨텍스트 반환
 async function buildRAGContext(diagnosis, riders) {
     try {
@@ -1156,6 +1301,21 @@ async function buildRAGContext(diagnosis, riders) {
             .slice(0, 1600);
         return { text: `\n\n[참조 약관 (관련 섹션)]\n${body}`, refs };
     } catch (_) { return { text: '', refs: [] }; }
+}
+
+// 진단+특약명으로 판례 DB 검색 → 프롬프트 주입용 컨텍스트 반환
+async function buildPrecedentContext(diagnosis, riders) {
+    try {
+        const query  = diagnosis + ' ' + riders.map(r => r.rider).join(' ');
+        const chunks = await PDB.search(query, 4);
+        if (!chunks.length) return { text: '', refs: [], chunks: [] };
+        const refs   = [...new Set(chunks.map(c => c.docName))];
+        const body   = chunks.slice(0, 3)
+            .map(c => `[${c.docName}]\n${c.text}`)
+            .join('\n\n---\n\n')
+            .slice(0, 1200);
+        return { text: `\n\n[참조 판례 (금융감독원 분쟁조정 사례)]\n${body}`, refs, chunks: chunks.slice(0, 3) };
+    } catch (_) { return { text: '', refs: [], chunks: [] }; }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1643,11 +1803,12 @@ async function analyze() {
     const hospText = hasHosp ? `입원 / 입원일수: ${document.getElementById('hospDays').value||'미입력'}일` : '외래·통원 치료';
 
     const rag       = await buildRAGContext(diagnosis, riders);
+    const prec      = await buildPrecedentContext(diagnosis, riders);
     const surgCtx   = buildSurgContext();
     const surgName  = hasSurg ? document.getElementById('surgName').value.trim() : '';
     const surgDBCtx = await buildSurgDBContext(diagnosis, surgName);
 
-    const userPrompt = `[기준일: ${today}]\n\n[보험 특약 정보]\n${riderLines}\n\n[진단·치료 정보]\n진단명/증상: ${diagnosis}\n수술: ${surgText}\n입원: ${hospText}\n기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}\n사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${surgCtx}${surgDBCtx}${rag.text}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`;
+    const userPrompt = `[기준일: ${today}]\n\n[보험 특약 정보]\n${riderLines}\n\n[진단·치료 정보]\n진단명/증상: ${diagnosis}\n수술: ${surgText}\n입원: ${hospText}\n기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}\n사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${surgCtx}${surgDBCtx}${rag.text}${prec.text}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`;
 
     const systemPrompt = `한국 손해보험 손해사정사. KCD-8 코드, 직접원인, 실손 자기부담금 기준 적용.
 [면책기간·감액기간 적용 규칙 — 특약별 엄격히 구분]
@@ -1665,9 +1826,10 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나. cov
     document.getElementById('loadingCard').style.display = 'block';
     document.getElementById('resultsSection').style.display = 'none';
 
-    if (rag.refs.length) {
-        document.getElementById('loadingStep').textContent = `약관 DB 참조 중: ${rag.refs.join(', ')}`;
-    }
+    const refMsgs = [];
+    if (rag.refs.length)  refMsgs.push(`약관: ${rag.refs.join(', ')}`);
+    if (prec.refs.length) refMsgs.push(`판례: ${prec.refs.join(', ')}`);
+    if (refMsgs.length) document.getElementById('loadingStep').textContent = `DB 참조 중: ${refMsgs.join(' | ')}`;
 
     const steps = ['KCD 코드 분류 중…','약관 면책 조항 검토 중…','특약별 보장 요건 분석 중…','청구 가능 금액 계산 중…','고객 설명 멘트 생성 중…'];
     let si = 0;
@@ -1680,7 +1842,7 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나. cov
             messages: [{ role:'user', content: userPrompt }]
         });
         clearInterval(stepTimer);
-        renderResults(parseAPIJson(data), riders, rag.refs);
+        renderResults(parseAPIJson(data), riders, rag.refs, prec.refs, prec.chunks);
     } catch (err) {
         clearInterval(stepTimer);
         document.getElementById('resultsSection').innerHTML = `<div class="card"><div class="error-box"><strong>⚠️ 분석 오류</strong><br><br>${err.message}</div></div>`;
@@ -1694,7 +1856,7 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나. cov
 // ════════════════════════════════════════════════════════════
 // Render Results
 // ════════════════════════════════════════════════════════════
-function renderResults(r, riderData, ragRefs = []) {
+function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = []) {
     const now = new Date();
     const ts = `${now.getFullYear()}.${now.getMonth()+1}.${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
     const ras = r.rider_analysis||[];
@@ -1716,12 +1878,15 @@ function renderResults(r, riderData, ragRefs = []) {
         return `<tr><td><div style="font-weight:600;">${ra.rider_name}</div><div style="font-size:11px;color:#94a3b8;">${[orig.insurer,orig.product].filter(Boolean).join(' / ')}</div></td><td><span class="status-badge ${sc}">${ra.coverage_status}</span></td><td><div class="amt">${ra.amount_description||fmtAmount(ra.final_amount)}</div>${ra.reduction_rate>0?`<div class="amt-note">감액 ${Math.round(ra.reduction_rate*100)}% 적용</div>`:''}</td><td class="rider-reason">${ra.reason||''}</td></tr>`;
     }).join('');
     const noteItems=(r.important_notes||[]).map(n=>`<li>${n}</li>`).join('');
-    const ragBanner = ragRefs.length
+    const ragBanner  = ragRefs.length
         ? `<div class="kdb-ref-banner">🗄️ 약관 DB 참조: <strong>${ragRefs.join(', ')}</strong></div>`
+        : '';
+    const precBanner = precRefs.length
+        ? `<div class="pdb-ref-banner">⚖️ 판례 DB 참조: <strong>${precRefs.join(', ')}</strong></div>`
         : '';
     document.getElementById('resultsSection').innerHTML=`
     <div class="fade-in">
-        ${ragBanner}
+        ${ragBanner}${precBanner}
         <div class="result-header">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
                 <div><h2>보장 분석 결과</h2><small>분석 시각: ${ts}</small></div>
@@ -1742,6 +1907,7 @@ function renderResults(r, riderData, ragRefs = []) {
         <div class="card"><div class="card-title">💬 고객 설명 멘트</div><div class="script-box"><button class="copy-btn" onclick="copyScript()">📋 복사</button><div class="script-text" id="scriptText">${r.customer_script||''}</div></div></div>
         ${noteItems?`<div class="card"><div class="card-title">⚠️ 주의사항</div><ul class="notes-list">${noteItems}</ul></div>`:''}
         ${renderGapSection(r.coverage_gaps)}
+        ${renderPrecedentSection(precChunks)}
         <div class="disclaimer">⚖️ ${r.disclaimer||'이 분석은 참고용이며 실제 보험금 지급 여부는 보험사 최종 심사에 따라 달라질 수 있습니다.'}</div>
         <div class="action-bar">
             <button class="btn btn-outline" onclick="window.print()">🖨️ 인쇄 / PDF</button>
@@ -1767,6 +1933,16 @@ function renderGapSection(gaps) {
             </div>
         </div>`).join('');
     return `<div class="gap-section"><div class="gap-title-bar">📌 추가 가입 권유 <span style="font-size:12px;font-weight:400;color:#92400e;">(${items.length}개 항목)</span></div>${rows}</div>`;
+}
+
+function renderPrecedentSection(chunks) {
+    if (!chunks || !chunks.length) return '';
+    const items = chunks.map(c => `
+        <div class="prec-card">
+            <div class="prec-card-name">📄 ${c.docName}</div>
+            <div class="prec-card-text">${c.text.slice(0, 400)}${c.text.length > 400 ? '…' : ''}</div>
+        </div>`).join('');
+    return `<div class="card"><div class="card-title">⚖️ 관련 판례</div>${items}</div>`;
 }
 
 function fmtAmount(n) {
@@ -1796,6 +1972,7 @@ function init() {
     addRider();
     checkAuth();
     renderKDBList();
+    renderPDBList();
     renderSurgTable();
 }
 init();
