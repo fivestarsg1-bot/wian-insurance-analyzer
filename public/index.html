@@ -1677,12 +1677,13 @@ async function handleMultiPdfAdd(type, file) {
             const { text } = await extractPDFText(file, () => {});
             if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
 
-            if (type === 'current' && _isTossReport(text)) {
-                // 기존 보장 + 토스 리포트 → extractTossReport (파이프·쉼표 처리 우수)
+            if (type === 'current') {
+                // 기존 보장: 토스 리포트·일반 보험증권 모두 extractTossReport 사용
+                // → 파이프 테이블 + "가입금액(만원)" 컬럼 처리 규칙이 훨씬 정확함
                 const result = await extractTossReport(text);
                 riders = _tossResultToRiders(result);
             } else {
-                // 추천 상품 또는 일반 보험증권 → extractRidersWithClaude
+                // 추천 상품 (가입제안서) → extractRidersWithClaude
                 const result = await extractRidersWithClaude(text);
                 riders = (result.riders || []).map(r => ({
                     insurer:   result.insurer || '',
