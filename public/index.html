@@ -2009,10 +2009,70 @@ function parseKorAmount(s) {
     return v;
 }
 
+// ── 종수술비 필터 ────────────────────────────────────────────
+// 포함: (질병|상해)[1-5]?종수술비, 수술비Ⅱ/II/2종
+// 제외: 암·뇌혈관질환·허혈성심장질환·척추·대장 등 특정 질병명이 앞에 붙은 것
+const _SURG_POS_RE = /(질병|상해)\s*[\[\(갱신형\]\)]*\s*[1-5]?\s*종수술비|수술비\s*(Ⅱ|II|2종)/;
+const _SURG_EXCL_RE = /(암|뇌혈관\s*질환?|허혈성\s*심장\s*질환?|척추|대장|소화기|간\s*질환?|폐|관절|특정\s*질병)[1-5]?\s*종수술비/;
+
+function _filterSurgeryRiders(riders) {
+    const nm = r => r.rider || r.name || '';
+    return riders.filter(r => _SURG_POS_RE.test(nm(r)) && !_SURG_EXCL_RE.test(nm(r)));
+}
+// 1~5종 중 최고 금액 1개만 사용
+function _surgeryMaxAmount(riders) {
+    const matched = _filterSurgeryRiders(riders);
+    if (!matched.length) return 0;
+    return Math.max(...matched.map(r => parseKorAmount(r.amount)));
+}
+
+// ── 실손 필터 (질병입원 실손만) ──────────────────────────────
+// 질병입원 관련 담보명 우선. 없으면 일반 실손(단, 상해입원 전용은 제외)
+const _LSI_DISEASE_RE  = /질병\s*(입원|의료비|실손)/;
+const _LSI_GENERIC_RE  = /실(손|비)\s*(의료)?|입원의료비|의료비\s*(특약|보장|담보)/;
+const _LSI_INJURE_ONLY = /^상해\s*(입원|실손)/; // 상해입원 전용은 제외
+
+function _filterLsiRiders(riders) {
+    const nm = r => r.rider || r.name || '';
+    const diseaseInpat = riders.filter(r => _LSI_DISEASE_RE.test(nm(r)));
+    if (diseaseInpat.length) return diseaseInpat;
+    // fallback: 일반 실손 (상해 전용 제외)
+    return riders.filter(r => _LSI_GENERIC_RE.test(nm(r)) && !_LSI_INJURE_ONLY.test(nm(r)));
+}
+
+// 실손 세대 감지 (담보명 내 "[N]세대" 문자열)
+function _detectLsiGeneration(riders) {
+    const nm = r => r.rider || r.name || '';
+    for (const r of riders) {
+        const m = nm(r).match(/([1-4])\s*세대/);
+        if (m) return m[1] + '세대';
+    }
+    return null;
+}
+
 // 보유 특약 목록에서 보장 공백 진단
 function buildClientGapAnalysis(riders) {
     return COVERAGE_CHECKLIST.map(c => {
         const riderName = r => r.rider || r.name || '';
+
+        // ── 종수술비: 특정 질병 접두어 제외 + 최고 금액 1개 ──
+        if (c.id === 'surgery') {
+            const amt = _surgeryMaxAmount(riders);
+            if (amt === 0) return { ...c, status: '미가입', current: '미가입' };
+            if (amt < c.threshold) return { ...c, status: '부족', current: fmtAmount(amt) + '원' };
+            return { ...c, status: '적정', current: fmtAmount(amt) + '원' };
+        }
+
+        // ── 실손: 질병입원 실손만 ──
+        if (c.id === 'lsi') {
+            const lsiRiders = _filterLsiRiders(riders);
+            if (!lsiRiders.length) return { ...c, status: '미가입', current: '미가입' };
+            const total = lsiRiders.reduce((s, r) => s + parseKorAmount(r.amount), 0);
+            const gen   = _detectLsiGeneration(lsiRiders);
+            const label = (total > 0 ? fmtAmount(total) + '원' : '가입') + (gen ? ` (${gen})` : '');
+            return { ...c, status: '적정', current: label };
+        }
+
         const matched = riders.filter(r => c.re.test(riderName(r)));
 
         // 뇌혈관·심장: 상위 특약(reFull) 유무로 2단계 판정
@@ -2787,11 +2847,11 @@ function calcCoverageScore(riders) {
         ? pct(heartFull.reduce((s, r) => s + parseKorAmount(r.amount), 0), 10000000)
         : 0;
 
-    // 종수술비 (권장 500만원)
-    const surgScore = pct(sumBy(/종\s*수술비|수술비\s*(II|Ⅱ|2)|(질병|상해)\s*종/), 5000000);
+    // 종수술비 (권장 500만원) — 특정 질병 접두어 제외, 최고 금액 1개
+    const surgScore = pct(_surgeryMaxAmount(riders), 5000000);
 
-    // 실손 (있으면 100점)
-    const lsiScore = riders.some(r => /실(손|비)\s*(의료)?|입원의료비|통원의료비|외래의료비|(질병|상해).{0,10}의료비|의료비\s*(특약|보장|담보)/.test(nm(r))) ? 100 : 0;
+    // 실손 (질병입원 실손만 판단, 있으면 100점)
+    const lsiScore = _filterLsiRiders(riders).length > 0 ? 100 : 0;
 
     const scores = [cancerScore, brainScore, heartScore, surgScore, lsiScore];
     const total  = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
