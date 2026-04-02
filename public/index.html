@@ -149,13 +149,72 @@
         .btn-lg { padding:14px 28px; font-size:16px; width:100%; }
         .btn-sm { padding:6px 14px; font-size:12px; }
 
-        /* ── PDF ── */
-        .drop-zone { border:2px dashed var(--border); border-radius:var(--radius-sm); padding:28px 20px; text-align:center; cursor:pointer; transition:all .2s; background:#fafbff; position:relative; }
-        .drop-zone:hover, .drop-zone.drag-over { border-color:var(--primary); background:var(--primary-light); }
-        .drop-zone.drag-over::after { content:'파일을 놓으세요'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(29,78,216,.08); border-radius:var(--radius-sm); font-size:16px; font-weight:700; color:var(--primary); }
-        .drop-icon { font-size:32px; margin-bottom:8px; }
-        .drop-text { font-size:14px; font-weight:600; color:var(--text); }
-        .drop-sub  { font-size:12px; color:var(--muted); margin-top:4px; }
+        /* ── PDF Drop Zone ── */
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 44px 24px 38px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color .2s, background .2s, box-shadow .2s, transform .18s;
+            background: #FAFBFF;
+            position: relative;
+            overflow: hidden;
+            user-select: none;
+        }
+        .drop-zone:hover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(49,130,246,.13);
+        }
+        .drop-zone.drag-over {
+            border-color: var(--primary);
+            border-style: solid;
+            background: var(--primary-light);
+            box-shadow: 0 0 0 4px rgba(49,130,246,.18);
+        }
+        .drop-zone.drag-over::after {
+            content: '여기에 놓으세요';
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(49,130,246,.09);
+            border-radius: calc(var(--radius) - 2px);
+            font-size: 18px; font-weight: 800;
+            color: var(--primary);
+            letter-spacing: -.3px;
+        }
+        .drop-icon-wrap {
+            width: 68px; height: 68px;
+            background: var(--primary-light);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 30px;
+            transition: transform .2s, background .2s;
+        }
+        .drop-zone:hover .drop-icon-wrap {
+            background: rgba(49,130,246,.2);
+            transform: scale(1.07);
+        }
+        .drop-icon { font-size:32px; margin-bottom:8px; } /* legacy fallback */
+        .drop-text { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 5px; }
+        .drop-sub  { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+        .drop-cta {
+            display: inline-flex; align-items: center; gap: 6px;
+            margin-top: 18px;
+            padding: 9px 24px;
+            background: var(--primary);
+            color: white;
+            border-radius: 10px;
+            font-size: 13px; font-weight: 700;
+            transition: background .15s, box-shadow .15s;
+            pointer-events: none;
+        }
+        .drop-zone:hover .drop-cta {
+            background: var(--primary-dark);
+            box-shadow: 0 4px 14px rgba(49,130,246,.35);
+        }
         .pdf-progress { margin-top:14px; }
         .pdf-progress-bar-wrap { height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin:8px 0; }
         .pdf-progress-bar { height:100%; background:var(--primary); border-radius:3px; transition:width .3s; }
@@ -442,9 +501,10 @@
         <div id="tossDropZone" class="drop-zone"
              onclick="document.getElementById('tossFileInput').click()"
              ondragover="onDragOverToss(event)" ondragleave="onDragLeaveToss()" ondrop="onDropToss(event)">
-            <div class="drop-icon">💙</div>
-            <div class="drop-text">토스 보장분석 리포트 PDF 드래그 또는 클릭</div>
-            <div class="drop-sub">파일은 브라우저에서만 처리되며 서버에 저장되지 않습니다</div>
+            <div class="drop-icon-wrap">💙</div>
+            <div class="drop-text">토스 보장분석 리포트 PDF</div>
+            <div class="drop-sub">파일을 드래그하거나 클릭해서 업로드하세요<br>브라우저에서만 처리되며 서버에 저장되지 않습니다</div>
+            <div class="drop-cta">📂 파일 선택</div>
         </div>
         <input type="file" id="tossFileInput" accept=".pdf" style="display:none" onchange="handleTossFile(this.files[0])">
         <div id="tossProgress" style="display:none;" class="pdf-progress">
@@ -475,9 +535,10 @@
         <div id="dropZone" class="drop-zone"
              onclick="document.getElementById('pdfFileInput').click()"
              ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
-            <div class="drop-icon">📑</div>
-            <div class="drop-text">보험증권 또는 약관 PDF를 드래그하거나 클릭해서 업로드</div>
-            <div class="drop-sub">파일은 서버에 저장되지 않습니다</div>
+            <div class="drop-icon-wrap">📑</div>
+            <div class="drop-text">보험증권 / 약관 PDF</div>
+            <div class="drop-sub">파일을 드래그하거나 클릭해서 업로드하세요<br>파일은 서버에 저장되지 않습니다</div>
+            <div class="drop-cta">📂 파일 선택</div>
         </div>
         <input type="file" id="pdfFileInput" accept=".pdf" style="display:none" onchange="handlePDFFile(this.files[0])">
         <div id="pdfProgressWrap" style="display:none;" class="pdf-progress">
