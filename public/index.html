@@ -489,6 +489,31 @@
     </div>
 </div>
 
+<!-- 보장 현황 리포트 모달 -->
+<div class="modal-overlay" id="coverageReportModal">
+    <div class="modal" style="max-width:380px;">
+        <div class="modal-title">📋 보장 현황 리포트</div>
+        <div class="pdf-modal-field">
+            <label>고객명 <span style="color:var(--danger);">*</span></label>
+            <input type="text" id="crClientName" placeholder="홍길동" maxlength="20"
+                   onkeydown="if(event.key==='Enter') openCoverageReport()">
+        </div>
+        <div class="pdf-modal-field">
+            <label>담당 설계사명</label>
+            <input type="text" id="crAgentName" placeholder="김설계 (선택)">
+        </div>
+        <div class="pdf-modal-field">
+            <label>연락처</label>
+            <input type="text" id="crAgentPhone" placeholder="010-0000-0000 (선택)">
+        </div>
+        <div class="pdf-modal-note">새 탭이 열리면 🖨️ 인쇄하기 버튼을 눌러 저장/출력하세요</div>
+        <div class="modal-footer" style="margin-top:18px;">
+            <button class="btn btn-outline btn-sm" onclick="hideCoverageReportModal()">취소</button>
+            <button class="btn btn-primary btn-sm" onclick="openCoverageReport()">📋 리포트 열기</button>
+        </div>
+    </div>
+</div>
+
 <!-- PDF 리포트 모달 -->
 <div class="modal-overlay" id="pdfModal">
     <div class="modal" style="max-width:380px;">
@@ -617,9 +642,14 @@
         </div>
 
         <div id="multiPdfAnalyzeWrap" style="display:none; margin-top:16px;">
-            <button class="btn btn-success btn-lg" id="multiPdfAnalyzeBtn" onclick="runMultiPdfAnalysis()">
-                📊 합산 분석 시작
-            </button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-success" style="flex:1;" id="multiPdfAnalyzeBtn" onclick="runMultiPdfAnalysis()">
+                    📊 합산 분석 시작
+                </button>
+                <button class="btn btn-primary" style="flex:1;" id="coverageReportBtn" onclick="showCoverageReportModal()">
+                    📋 보장 현황 리포트
+                </button>
+            </div>
         </div>
     </div>
 
@@ -2773,6 +2803,211 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === document.getElementById('pdfModal')) hidePDFModal();
     });
 });
+
+// ════════════════════════════════════════════════════════════
+// 보장 현황 리포트 (진단명 없이 바로 출력)
+// ════════════════════════════════════════════════════════════
+function showCoverageReportModal() {
+    const riders = multiPdfState.current.flatMap(f => f.riders || []);
+    if (!riders.length) { toast('기존 보장 파일을 먼저 업로드하고 처리해주세요.'); return; }
+    document.getElementById('coverageReportModal').classList.add('show');
+    setTimeout(() => document.getElementById('crClientName').focus(), 50);
+}
+function hideCoverageReportModal() {
+    document.getElementById('coverageReportModal').classList.remove('show');
+}
+function openCoverageReport() {
+    const clientName = document.getElementById('crClientName').value.trim();
+    if (!clientName) { toast('고객명을 입력해주세요.'); document.getElementById('crClientName').focus(); return; }
+    const agentName  = document.getElementById('crAgentName').value.trim();
+    const agentPhone = document.getElementById('crAgentPhone').value.trim();
+    hideCoverageReportModal();
+    const riders = multiPdfState.current.flatMap(f => f.riders || []);
+    const win = window.open('', '_blank');
+    if (!win) { toast('⚠ 팝업이 차단되었습니다. 브라우저 팝업 허용 후 다시 시도하세요.'); return; }
+    win.document.write(buildCoverageReportHTML(clientName, agentName, agentPhone, riders));
+    win.document.close();
+}
+
+function buildCoverageReportHTML(clientName, agentName, agentPhone, riders) {
+    const scoreData = calcCoverageScore(riders);
+    const gaps      = buildClientGapAnalysis(riders);
+    const grade     = gradeOf(scoreData.total);
+    const today     = new Date();
+    const dateStr   = `${today.getFullYear()}년 ${today.getMonth()+1}월 ${today.getDate()}일`;
+    const fileStr   = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+    const GC = { gA:'#00C471', gB:'#3182F6', gC:'#F9B416', gD:'#F04452' };
+    const gc = GC[grade.cls];
+    const axes = ['암진단비','뇌혈관','심장','종수술비','실손'];
+    const missGaps = gaps.filter(g => g.status !== '적정');
+
+    const STAT = {
+        cancer:    { avg:'3,500만원', sub:'암 입원+외래 평균 본인부담액' },
+        brain:     { avg:'2,800만원', sub:'뇌혈관질환 입원 평균 진료비' },
+        heart:     { avg:'2,200만원', sub:'허혈성심장질환 입원 평균 진료비' },
+        surgery:   { avg:'300만~1,500만원', sub:'수술 종류별 평균 본인부담 범위' },
+        lsi:       { avg:'연 200만원↑', sub:'비급여 포함 연간 평균 의료비' },
+        noncancer: { avg:'1,200만원', sub:'항암·방사선 비급여 평균 부담' },
+        circ:      { avg:'1,500만원', sub:'심뇌혈관 복합치료 평균 비용' },
+    };
+
+    const barsHTML = axes.map((lbl, i) => {
+        const s = scoreData.scores[i]; const sg = gradeOf(s); const bc = GC[sg.cls];
+        return `<div style="margin-bottom:9px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                <b style="color:#191F28;">${lbl}</b><span style="color:#8B95A1;">${s}점</span>
+            </div>
+            <div style="height:7px;background:#E5E8EB;border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${s}%;background:${bc};border-radius:4px;"></div>
+            </div>
+        </div>`;
+    }).join('');
+
+    const statusRows = gaps.map((g, i) => {
+        const s = scoreData.scores[i];
+        const icon  = g.status==='적정'?'✅':g.status==='부족'?'⚠️':'❌';
+        const sbg   = g.status==='적정'?'#f0fdf4':g.status==='부족'?'#fffbeb':'#fff5f5';
+        const sc    = g.status==='적정'?'#166534':g.status==='부족'?'#92400e':'#991b1b';
+        const sg    = gradeOf(s); const bc = GC[sg.cls];
+        const cur   = g.current !== '미가입' ? g.current : '미가입 (0원)';
+        return `<div style="display:flex;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid #F2F4F6;">
+            <span style="font-size:18px;flex-shrink:0;">${icon}</span>
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-size:13px;font-weight:700;color:#191F28;">${g.label}</span>
+                    <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+                        <span style="font-size:11px;color:#8B95A1;">${cur}</span>
+                        <span style="background:${sbg};color:${sc};font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;">${g.status}</span>
+                    </div>
+                </div>
+                <div style="height:5px;background:#E5E8EB;border-radius:3px;overflow:hidden;">
+                    <div style="height:100%;width:${s}%;background:${bc};border-radius:3px;"></div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+
+    const gapRows = missGaps.map(g => {
+        const stat = STAT[g.id] || { avg:'-', sub:'' };
+        const bb   = g.status==='미가입'?'#fee2e2':'#fef3c7';
+        const bc   = g.status==='미가입'?'#991b1b':'#92400e';
+        return `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(0,0,0,.06);">
+            <span style="background:${bb};color:${bc};font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0;margin-top:2px;">${g.status}</span>
+            <div style="flex:1;">
+                <div style="font-size:13px;font-weight:700;color:#191F28;">${g.label}</div>
+                <div style="font-size:11px;color:#8B95A1;margin-top:1px;">현재: ${g.current !== '미가입' ? g.current : '미가입'} · 권장 ${g.recommend}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:14px;font-weight:800;color:#F04452;">${stat.avg}</div>
+                <div style="font-size:9px;color:#8B95A1;margin-top:1px;max-width:110px;text-align:right;">${stat.sub}</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    const recRows = missGaps.slice(0,4).map(g =>
+        `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;">
+            <span style="font-size:13px;">${g.status==='미가입'?'❌':'⚠️'}</span>
+            <b style="color:#191F28;">${g.label}</b>
+            <span style="color:#8B95A1;">— 권장 ${g.recommend}</span>
+        </div>`
+    ).join('');
+
+    return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>보장현황리포트_${clientName}_${fileStr}</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Pretendard',-apple-system,sans-serif;background:#F2F4F6;color:#191F28;line-height:1.5;}
+.print-bar{background:#fff;border-bottom:1px solid #E5E8EB;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.print-btn{background:#3182F6;color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .2s;}
+.print-btn:hover{background:#1B6ADB;}
+.page{width:210mm;min-height:297mm;margin:20px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1);padding:14mm 16mm;}
+@page{size:A4;margin:10mm 14mm;}
+@media print{
+    body{background:#fff;}
+    .print-bar{display:none!important;}
+    .page{width:100%;margin:0;padding:0;border-radius:0;box-shadow:none;min-height:unset;}
+    *{print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+}
+</style>
+</head>
+<body>
+<div class="print-bar">
+    <span style="font-size:13px;font-weight:700;">📋 보장 현황 리포트 — ${clientName} 님</span>
+    <button class="print-btn" onclick="window.print()">🖨️ 인쇄하기</button>
+</div>
+<div class="page">
+
+<!-- 헤더 -->
+<div style="background:linear-gradient(135deg,#1B6ADB,#3182F6);border-radius:12px;padding:20px 24px;margin-bottom:20px;color:#fff;display:flex;justify-content:space-between;align-items:center;">
+    <div>
+        <div style="font-size:10px;opacity:.8;margin-bottom:4px;letter-spacing:.5px;">내 손안의 손해사정사</div>
+        <div style="font-size:20px;font-weight:800;letter-spacing:-.5px;">${clientName} 님 보장 현황 리포트</div>
+    </div>
+    <div style="text-align:right;font-size:11px;opacity:.8;">${dateStr}</div>
+</div>
+
+<!-- 종합 점수 + 바 -->
+<div style="display:flex;gap:20px;align-items:center;background:#F2F4F6;border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+    <div style="text-align:center;flex-shrink:0;">
+        <div style="width:96px;height:96px;border-radius:50%;border:5px solid ${gc};background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto;">
+            <div style="font-size:32px;font-weight:800;color:${gc};line-height:1.1;">${scoreData.total}</div>
+            <div style="font-size:11px;color:${gc};font-weight:600;">점</div>
+        </div>
+        <div style="font-size:15px;font-weight:800;color:${gc};margin-top:7px;">${grade.label}</div>
+        <div style="font-size:10px;color:#8B95A1;margin-top:2px;">종합 보장 점수</div>
+    </div>
+    <div style="flex:1;">${barsHTML}</div>
+</div>
+
+<!-- 보장 항목별 현황 -->
+<div style="margin-bottom:20px;">
+    <div style="font-size:14px;font-weight:800;padding-bottom:8px;border-bottom:2px solid #F2F4F6;margin-bottom:4px;">📋 보장 항목별 현황</div>
+    ${statusRows}
+</div>
+
+${missGaps.length ? `
+<!-- 보장 공백 예상 비용 -->
+<div style="background:#FFF9F9;border:1px solid #FECACA;border-radius:12px;padding:16px 18px;margin-bottom:18px;">
+    <div style="font-size:14px;font-weight:800;color:#991B1B;margin-bottom:2px;">⚠️ 보장 공백 시 예상 본인 부담</div>
+    <div style="font-size:10px;color:#8B95A1;margin-bottom:12px;">건강보험심사평가원 통계 기준 (2023년)</div>
+    ${gapRows}
+    <div style="font-size:10px;color:#8B95A1;margin-top:10px;padding-top:8px;border-top:1px solid #FECACA;">
+        ※ 위 금액은 통계 평균값으로, 실제 진료 환경 및 병원에 따라 달라질 수 있습니다.
+    </div>
+</div>
+
+<!-- 추가 가입 권유 -->
+<div style="border:1px solid #DBEAFE;border-radius:12px;padding:14px 18px;margin-bottom:18px;">
+    <div style="font-size:13px;font-weight:800;color:#1D4ED8;margin-bottom:8px;">💡 추가 가입 권유 사항</div>
+    ${recRows}
+</div>
+` : `
+<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:16px 18px;margin-bottom:18px;text-align:center;">
+    <div style="font-size:14px;font-weight:700;color:#166534;">✅ 주요 보장 항목 모두 적정 수준 가입 확인</div>
+</div>
+`}
+
+<!-- 푸터 -->
+<div style="border-top:1.5px solid #F2F4F6;padding-top:14px;margin-top:4px;">
+    ${(agentName||agentPhone)?`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        ${agentName?`<span style="font-size:13px;font-weight:700;">담당: ${agentName}</span>`:'<span></span>'}
+        ${agentPhone?`<span style="font-size:13px;color:#3182F6;font-weight:600;">${agentPhone}</span>`:''}
+    </div>`:''}
+    <div style="font-size:10px;color:#8B95A1;line-height:1.7;">
+        ⚖️ 이 리포트는 AI 기반 참고자료이며, 실제 보험금 지급 여부는 보험사 약관 및 심사 기준에 따라 달라질 수 있습니다. 가입 전 반드시 약관을 확인하시기 바랍니다.
+    </div>
+</div>
+
+</div><!-- /page -->
+</body>
+</html>`;
+}
 
 // 새 탭 HTML 리포트 출력
 function openPrintReport() {
