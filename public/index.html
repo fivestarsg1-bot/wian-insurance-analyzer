@@ -1030,16 +1030,45 @@ async function extractPDFText(file, onProgress) {
 
 async function extractRidersWithClaude(text) {
     const model = localStorage.getItem('ai_model') || 'claude-sonnet-4-6';
+    // 앞부분(기본정보·특약목록)과 끝부분(누락 방지)을 함께 전달
     let trimmed = text;
-    if (text.length > 8000) trimmed = text.slice(0, 5000) + '\n\n[...중략...]\n\n' + text.slice(-3000);
+    if (text.length > 12000) trimmed = text.slice(0, 9000) + '\n\n[...중략...]\n\n' + text.slice(-3000);
 
-    const system = `한국 보험 약관 파싱 전문가. 순수 JSON만 반환 (코드블록·설명 없이):
-{"insurer":"","product":"","policy_start_date":"YYYY-MM-DD","riders":[{"name":"특약명","amount":"가입금액 또는 미확인","start_date":"YYYY-MM-DD"}],"extraction_note":""}
-주의: amount에 보험료 넣지 말것. 날짜 YYYY-MM-DD.`;
+    const system = `당신은 한국 보험증권·약관 파싱 전문가입니다. 아래 규칙에 따라 특약을 빠짐없이 추출하고 순수 JSON만 반환하세요 (마크다운 코드블록·설명 없이).
+
+## 추출 대상 특약 유형 (반드시 포함)
+다음 패턴을 가진 항목은 모두 riders 배열에 추가하세요:
+
+1. 종수술비 계열 — 가장 자주 누락되는 항목. 아래 표현을 모두 동일하게 인식할 것:
+   - 질병종수술비 / 상해종수술비
+   - 수술비II / 수술비Ⅱ / 수술비2 / 수술비(II) / 수술비(Ⅱ)
+   - 질병수술비Ⅱ / 상해수술비Ⅱ / 질병수술비II / 상해수술비II
+   - 수술비II(1~3종) / 수술비II(1~5종) / 수술비Ⅱ(1~5종)
+   - 1~3종수술비 / 1~5종수술비 / 제1종수술비 / 제2종수술비 / 제3종수술비
+   - 종합수술비 / 종(種)수술비 / 종수술(특약)
+
+2. 일반 수술비: 질병수술비 / 상해수술비 / 특정수술비
+
+3. 진단비: 암진단비 / 뇌혈관진단비 / 심혈관진단비 / 뇌졸중진단비 / 급성심근경색진단비
+
+4. 입원일당: 질병입원일당 / 상해입원일당 / 암입원일당
+
+5. 실손의료비 / 상해후유장해 / 사망보험금 등
+
+## 파싱 규칙
+- amount: 보장금액(가입금액)만 기재. 보험료·월납입액 절대 넣지 말 것.
+- 금액 단위가 "만원"이면 그대로 표기 (예: "3,000만원"). 원 단위면 변환 불필요.
+- 특약명에 로마숫자(Ⅱ, Ⅲ)·괄호·종(種) 글자가 포함돼 있어도 그대로 유지.
+- 같은 특약이 "질병"과 "상해"로 구분되면 별개 항목으로 각각 추출.
+- start_date가 없으면 policy_start_date와 동일하게 설정.
+- 날짜 형식: YYYY-MM-DD
+
+순수 JSON만 반환:
+{"insurer":"","product":"","policy_start_date":"YYYY-MM-DD","riders":[{"name":"특약명","amount":"가입금액 또는 미확인","start_date":"YYYY-MM-DD"}],"extraction_note":""}`;
 
     const data = await apiFetch('/api/messages', {
-        model, max_tokens: 3000, system,
-        messages: [{ role:'user', content:`보험 약관 PDF. 특약 추출:\n\n${trimmed}` }]
+        model, max_tokens: 4000, system,
+        messages: [{ role:'user', content:`다음은 보험증권 PDF에서 추출한 텍스트입니다. 특약을 빠짐없이 추출해 주세요. 특히 종수술비(수술비Ⅱ, 수술비II, 질병종수술비, 상해종수술비 등) 항목을 반드시 포함하세요:\n\n${trimmed}` }]
     });
     return parseAPIJson(data);
 }
@@ -1198,7 +1227,7 @@ const COVERAGE_CHECKLIST = [
     { id:'brain',   label:'뇌혈관 진단비', re:/뇌(졸중|혈관|경색|출혈|혈전)\s*(진단)?/,  recommend:'2,000만원 이상', threshold:10000000 },
     { id:'heart',   label:'심장 진단비',   re:/(심근경색|허혈성심장|급성심)\s*(진단)?/,   recommend:'2,000만원 이상', threshold:10000000 },
     { id:'hosp',    label:'입원일당',      re:/입원\s*일당/,                              recommend:'5만원/일 이상',  threshold:0        },
-    { id:'surgery', label:'수술비',        re:/(질병|상해)?\s*수술비/,                    recommend:'1,000만원 이상', threshold:5000000  },
+    { id:'surgery', label:'수술비',        re:/(질병|상해)?\s*수술비|종수술비|수술비\s*[IⅡ2]/,  recommend:'1,000만원 이상', threshold:5000000  },
     { id:'lsi',     label:'실손의료보험',  re:/실(손|비)\s*(의료)?/,                      recommend:'필수 가입',      threshold:0        },
     { id:'injury',  label:'상해후유장해',  re:/상해\s*후유\s*장해/,                       recommend:'8,000만원 이상', threshold:50000000 },
     { id:'care',    label:'간병·치매',     re:/(간병|치매|장기요양)/,                     recommend:'가입 권유',      threshold:0        },
