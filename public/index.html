@@ -344,10 +344,16 @@
         .sbar-row { margin-bottom:9px; }
         .sbar-head { display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px; }
         .sbar-head b { color:#334155; } .sbar-head span { color:#64748b; }
-        .sbar-track { height:7px; background:#e2e8f0; border-radius:4px; overflow:hidden; }
-        .sbar-fill  { height:100%; border-radius:4px; }
-        .sbar-fill.gA { background:#10b981; } .sbar-fill.gB { background:#3b82f6; }
-        .sbar-fill.gC { background:#f59e0b; } .sbar-fill.gD { background:#ef4444; }
+        .sbar-track { height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden; }
+        .sbar-fill  { height:100%; border-radius:4px; width:0%; transition:width .9s cubic-bezier(.25,.46,.45,.94); }
+        .sbar-fill.gA { background:#10b981; } .sbar-fill.gB { background:var(--primary); }
+        .sbar-fill.gC { background:#f59e0b; } .sbar-fill.gD { background:var(--danger); }
+
+        /* ── 분석 진행 프로그레스 바 ── */
+        .loading-progress-wrap { max-width:300px; margin:18px auto 0; }
+        .loading-progress-track { height:6px; background:var(--primary-light); border-radius:3px; overflow:hidden; }
+        .loading-progress-bar { height:100%; background:var(--primary); border-radius:3px; width:0%; transition:width .5s ease; }
+        .loading-progress-pct { font-size:12px; font-weight:600; color:var(--primary); margin-top:7px; text-align:center; }
         @media(max-width:520px){ .score-radar-wrap{ flex:0 0 100%; order:3; } .score-bars{ flex:0 0 100%; } }
 
         /* ── PDB ── */
@@ -696,6 +702,12 @@
         <div class="spinner"></div>
         <div class="loading-text">AI가 보험 약관을 분석하고 있습니다…</div>
         <div class="loading-step" id="loadingStep"></div>
+        <div class="loading-progress-wrap">
+            <div class="loading-progress-track">
+                <div class="loading-progress-bar" id="analysisProgressBar"></div>
+            </div>
+            <div class="loading-progress-pct" id="analysisProgressPct">0%</div>
+        </div>
     </div>
 
     <!-- ⑥ Results -->
@@ -1987,6 +1999,7 @@ async function analyze() {
     btn.disabled = true; btn.textContent = '분석 중…';
     document.getElementById('loadingCard').style.display = 'block';
     document.getElementById('resultsSection').style.display = 'none';
+    setAnalysisProgress(5);
 
     const refMsgs = [];
     if (rag.refs.length)  refMsgs.push(`약관: ${rag.refs.join(', ')}`);
@@ -2012,6 +2025,7 @@ async function analyze() {
             }]
         });
         const result = parseAPIJson(data1);
+        setAnalysisProgress(5 + Math.round(90 / batches.length));
 
         // ── 추가 배치 호출 ────────────────────────────────────────
         if (batches.length > 1) {
@@ -2030,6 +2044,7 @@ async function analyze() {
                 });
                 const batchResult = parseAPIJson(dataB);
                 result.rider_analysis = (result.rider_analysis || []).concat(batchResult.rider_analysis || []);
+                setAnalysisProgress(5 + Math.round(90 * (b + 1) / batches.length));
             }
 
             // 전체 합산 금액 재계산
@@ -2037,6 +2052,7 @@ async function analyze() {
             result.total_description = fmtAmount(result.total_estimated);
         }
 
+        setAnalysisProgress(98);
         clearInterval(stepTimer);
         renderResults(result, riders, rag.refs, prec.refs, prec.chunks);
     } catch (err) {
@@ -2144,6 +2160,12 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
     </div>`;
     document.getElementById('resultsSection').style.display='block';
     drawRadarChart(scoreData.scores);
+    // score bar 입장 애니메이션 (0% → target)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.querySelectorAll('#resultsSection .sbar-fill[data-target]').forEach(el => {
+            el.style.width = el.dataset.target + '%';
+        });
+    }));
     setTimeout(()=>document.getElementById('resultsSection').scrollIntoView({behavior:'smooth',block:'start'}),80);
 }
 
@@ -2224,7 +2246,7 @@ function renderScoreCard(scoreData) {
         const sg = gradeOf(s);
         return `<div class="sbar-row">
             <div class="sbar-head"><b>${lbl}</b><span>${s}점</span></div>
-            <div class="sbar-track"><div class="sbar-fill ${sg.cls}" style="width:${s}%"></div></div>
+            <div class="sbar-track"><div class="sbar-fill ${sg.cls}" style="width:0%" data-target="${s}"></div></div>
         </div>`;
     }).join('');
     return `
@@ -2291,6 +2313,13 @@ function drawRadarChart(scores) {
             animation: { duration: 500 },
         },
     });
+}
+
+function setAnalysisProgress(pct) {
+    const bar = document.getElementById('analysisProgressBar');
+    const txt = document.getElementById('analysisProgressPct');
+    if (bar) bar.style.width = pct + '%';
+    if (txt) txt.textContent = Math.round(pct) + '%';
 }
 
 function fmtAmount(n) {
