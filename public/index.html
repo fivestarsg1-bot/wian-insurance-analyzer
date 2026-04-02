@@ -1331,16 +1331,36 @@ let tossExtracted = null;
 
 // 보장 공백 체크리스트 (가입 여부·금액 기준)
 const COVERAGE_CHECKLIST = [
-    { id:'cancer',    label:'암 진단비',        re:/암\s*(진단|특약|보장)/,                                        recommend:'2,000만원 이상', threshold:20000000 },
-    { id:'noncancer', label:'비급여암치료비',    re:/비급여\s*암|암\s*비급여|항암\s*(약물|방사선|치료비)|비급여\s*(항암|치료)/, recommend:'3,000만원 이상', threshold:30000000 },
-    { id:'brain',     label:'뇌혈관 진단비',    re:/뇌(졸중|혈관|경색|출혈|혈전)\s*(진단)?/,                       recommend:'1,000만원 이상', threshold:10000000 },
-    { id:'heart',     label:'심장 진단비',       re:/(심근경색|허혈성심장|급성심)\s*(진단)?/,                        recommend:'1,000만원 이상', threshold:10000000 },
-    { id:'circ',      label:'순환계질환치료비',  re:/순환계\s*(질환)?\s*(치료|진단)|뇌심\s*(혈관)?\s*(치료|보장)|뇌·?심장\s*(치료|보장)/, recommend:'2,000만원 이상', threshold:20000000 },
-    { id:'hosp',      label:'입원일당',          re:/입원\s*일당/,                                                   recommend:'5만원/일 이상',  threshold:0        },
-    { id:'surgery',   label:'종수술비',          re:/(질병|상해)?\s*수술비|종수술비|수술비\s*[IⅡ2]/,                recommend:'500만원 이상',   threshold:5000000  },
-    { id:'lsi',       label:'실손의료보험',      re:/실(손|비)\s*(의료)?|입원의료비|통원의료비|외래의료비|(질병|상해).{0,10}의료비|의료비\s*(특약|보장|담보)/, recommend:'필수 가입',      threshold:0        },
-    { id:'injury',    label:'상해후유장해',      re:/상해\s*후유\s*장해/,                                            recommend:'8,000만원 이상', threshold:50000000 },
-    { id:'care',      label:'간병·치매',         re:/(간병|치매|장기요양)/,                                          recommend:'가입 권유',      threshold:0        },
+    { id:'cancer',
+      label:'암 진단비',
+      re:/암\s*(진단|특약|보장)/,
+      recommend:'3,000만원 이상', threshold:30000000 },
+    { id:'brain',
+      label:'뇌혈관 진단비',
+      re:/뇌(졸중|혈관|경색|출혈|혈전)/,
+      reFull:/뇌혈관\s*질환\s*(진단|특약|보장)/,
+      recommend:'뇌혈관질환진단비 1,000만원 이상', threshold:10000000 },
+    { id:'heart',
+      label:'심장 진단비',
+      re:/(심근경색|허혈성\s*심장)/,
+      reFull:/허혈성\s*심장\s*질환\s*(진단|특약|보장)/,
+      recommend:'허혈성심장질환진단비 1,000만원 이상', threshold:10000000 },
+    { id:'surgery',
+      label:'종수술비',
+      re:/종\s*수술비|수술비\s*(II|Ⅱ|2)|(질병|상해)\s*종/,
+      recommend:'500만원 이상', threshold:5000000 },
+    { id:'lsi',
+      label:'실손의료보험',
+      re:/실(손|비)\s*(의료)?|입원의료비|통원의료비|외래의료비|(질병|상해).{0,10}의료비|의료비\s*(특약|보장|담보)/,
+      recommend:'필수 가입', threshold:0 },
+    { id:'noncancer',
+      label:'비급여암치료비',
+      re:/비급여\s*암|암\s*비급여|항암\s*(약물|방사선|치료비)|비급여\s*(항암|치료)/,
+      recommend:'3,000만원 이상', threshold:30000000 },
+    { id:'circ',
+      label:'순환계질환치료비',
+      re:/순환계\s*(질환)?\s*(치료|진단)|뇌심\s*(혈관)?\s*(치료|보장)|뇌·?심장\s*(치료|보장)/,
+      recommend:'2,000만원 이상', threshold:20000000 },
 ];
 
 function parseKorAmount(s) {
@@ -1356,7 +1376,23 @@ function parseKorAmount(s) {
 // 보유 특약 목록에서 보장 공백 진단
 function buildClientGapAnalysis(riders) {
     return COVERAGE_CHECKLIST.map(c => {
-        const matched = riders.filter(r => c.re.test(r.rider || r.name || ''));
+        const riderName = r => r.rider || r.name || '';
+        const matched = riders.filter(r => c.re.test(riderName(r)));
+
+        // 뇌혈관·심장: 상위 특약(reFull) 유무로 2단계 판정
+        if (c.reFull) {
+            if (!matched.length) return { ...c, status: '미가입', current: '미가입' };
+            const fullMatched = matched.filter(r => c.reFull.test(riderName(r)));
+            if (!fullMatched.length) {
+                const names = [...new Set(matched.map(riderName))].join(', ').slice(0, 40);
+                return { ...c, status: '부족', current: `${names} (상위 특약 없음)` };
+            }
+            const total = fullMatched.reduce((s, r) => s + parseKorAmount(r.amount), 0);
+            if (total < c.threshold) return { ...c, status: '부족', current: fmtAmount(total) + '원' };
+            return { ...c, status: '적정', current: fmtAmount(total) + '원' };
+        }
+
+        // 일반 항목
         if (!matched.length) return { ...c, status: '미가입', current: '미가입' };
         const total = matched.reduce((s, r) => s + parseKorAmount(r.amount), 0);
         if (c.threshold > 0 && total < c.threshold) {
