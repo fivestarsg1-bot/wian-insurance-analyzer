@@ -410,10 +410,35 @@
         .toss-gap-row { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; }
         .toss-gap-row-ok { color:#166534; }
 
+        /* ── Multi-PDF Upload ── */
+        .mpdf-section { margin-bottom: 0; }
+        .mpdf-section-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+        .mpdf-section-badge { font-size:11px; color:var(--muted); background:var(--bg); padding:2px 8px; border-radius:20px; font-weight:400; }
+        .mpdf-add-btn { display:flex; align-items:center; gap:8px; padding:10px 14px; border:2px dashed var(--border); border-radius:var(--radius-sm); cursor:pointer; background:#fafbff; transition:all .2s; font-size:13px; color:var(--muted); width:100%; justify-content:center; font-family:inherit; margin-top:6px; }
+        .mpdf-add-btn:hover:not(:disabled) { border-color:var(--primary); color:var(--primary); background:var(--primary-light); }
+        .mpdf-add-btn:disabled { opacity:.4; cursor:not-allowed; }
+        .mpdf-file-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:6px; background:white; }
+        .mpdf-file-icon { font-size:18px; flex-shrink:0; }
+        .mpdf-file-info { flex:1; min-width:0; }
+        .mpdf-file-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .mpdf-file-status-done  { font-size:11px; color:var(--success); font-weight:600; }
+        .mpdf-file-status-load  { font-size:11px; color:var(--primary); font-weight:600; }
+        .mpdf-file-status-error { font-size:11px; color:var(--danger); font-weight:600; }
+        .mpdf-file-del { background:none; border:none; color:var(--danger); cursor:pointer; font-size:18px; padding:2px 6px; border-radius:4px; line-height:1; flex-shrink:0; }
+        .mpdf-file-del:hover { background:#fee2e2; }
+        .mpdf-divider { border:none; border-top:1px solid var(--border); margin:14px 0; }
+
+        /* ── Compare Tabs ── */
+        .compare-tabs { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:16px; }
+        .compare-tab { flex:1; padding:10px 8px; border:none; background:none; font-size:13px; font-weight:600; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-2px; transition:color .2s,border-color .2s; font-family:inherit; }
+        .compare-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+        .compare-tab-pane { display:none; }
+        .compare-tab-pane.active { display:block; }
+
         /* ── Print ── */
         @media print {
             #passwordGate { display:none!important; }
-            .header, #analyzeBtn, #addRiderBtn, .action-bar, .rider-del, #loadingCard, #pdfCard { display:none!important; }
+            .header, #analyzeBtn, #addRiderBtn, .action-bar, .rider-del, #loadingCard, #multiPdfCard { display:none!important; }
             body { background:white; }
             .card { box-shadow:none; border:1px solid #ccc; page-break-inside:avoid; }
             #resultsSection { display:block!important; }
@@ -552,42 +577,54 @@
         <div id="tossDashboardChecklist"></div>
     </div>
 
-    <!-- ① PDF 업로드 -->
-    <div class="card" id="pdfCard">
+    <!-- ① 멀티 PDF 비교 분석 -->
+    <div class="card" id="multiPdfCard">
         <div class="card-title">
-            📄 보험증권 PDF 자동 추출
-            <span class="badge badge-green">NEW</span>
+            📄 PDF 보장 비교 분석
+            <span class="badge badge-green">최대 5개</span>
         </div>
-        <div id="dropZone" class="drop-zone"
-             onclick="document.getElementById('pdfFileInput').click()"
-             ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
-            <div class="drop-icon-wrap">📑</div>
-            <div class="drop-text">보험증권 / 약관 PDF</div>
-            <div class="drop-sub">파일을 드래그하거나 클릭해서 업로드하세요<br>파일은 서버에 저장되지 않습니다</div>
-            <div class="drop-cta">📂 파일 선택</div>
-        </div>
-        <input type="file" id="pdfFileInput" accept=".pdf" style="display:none" onchange="handlePDFFile(this.files[0])">
-        <div id="pdfProgressWrap" style="display:none;" class="pdf-progress">
-            <div class="pdf-progress-text" id="pdfProgressText"></div>
-            <div class="pdf-progress-bar-wrap"><div class="pdf-progress-bar" id="pdfProgressBar" style="width:0%"></div></div>
-        </div>
-        <div id="pdfResultWrap" style="display:none;" class="pdf-result">
-            <div class="pdf-result-header">
-                <div class="pdf-result-title" id="pdfResultTitle">추출 결과</div>
-                <button class="btn btn-sm" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;" onclick="resetPDF()">✕ 초기화</button>
+
+        <!-- 기존 보장 PDF (최대 3개) -->
+        <div class="mpdf-section">
+            <div class="mpdf-section-title">
+                🔵 기존 보장 PDF
+                <span class="mpdf-section-badge" id="currentPdfCountBadge">0 / 3</span>
             </div>
-            <div class="pdf-summary" id="pdfSummary"></div>
-            <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">특약 목록 (클릭하여 선택/해제)</div>
-            <div class="pdf-rider-list" id="pdfRiderList"></div>
-            <div id="pdfNoteWrap"></div>
-            <div class="pdf-actions">
-                <button class="pdf-select-all" onclick="toggleSelectAll()">전체 선택/해제</button>
-                <div style="flex:1;"></div>
-                <button class="btn btn-sm btn-outline" style="border-color:#7c3aed;color:#7c3aed;" onclick="savePDFToKDB()">🗄️ 약관 DB 저장</button>
-                <button class="btn btn-success btn-sm" onclick="applyPDFRiders()">✓ 선택한 특약 폼에 적용</button>
+            <div id="currentPdfList"></div>
+            <button class="mpdf-add-btn" id="currentPdfAddBtn"
+                    onclick="document.getElementById('currentPdfInput').click()">
+                + 파일 추가 (토스 리포트 또는 보험증권)
+            </button>
+            <input type="file" id="currentPdfInput" accept=".pdf" style="display:none"
+                   onchange="handleMultiPdfAdd('current', this.files[0]); this.value='';">
+        </div>
+
+        <hr class="mpdf-divider">
+
+        <!-- 추천 상품 PDF (최대 2개) -->
+        <div class="mpdf-section">
+            <div class="mpdf-section-title">
+                🟢 추천 상품 PDF
+                <span class="mpdf-section-badge" id="recommendPdfCountBadge">0 / 2</span>
             </div>
+            <div id="recommendPdfList"></div>
+            <button class="mpdf-add-btn" id="recommendPdfAddBtn"
+                    onclick="document.getElementById('recommendPdfInput').click()">
+                + 파일 추가 (추천 보험 상품 증권)
+            </button>
+            <input type="file" id="recommendPdfInput" accept=".pdf" style="display:none"
+                   onchange="handleMultiPdfAdd('recommend', this.files[0]); this.value='';">
+        </div>
+
+        <div id="multiPdfAnalyzeWrap" style="display:none; margin-top:16px;">
+            <button class="btn btn-success btn-lg" id="multiPdfAnalyzeBtn" onclick="runMultiPdfAnalysis()">
+                📊 합산 분석 시작
+            </button>
         </div>
     </div>
+
+    <!-- 멀티 PDF 비교 대시보드 -->
+    <div id="compareDashboard" style="display:none;"></div>
 
     <!-- ① 약관 지식 DB -->
     <div class="card" id="kdbCard">
@@ -1310,6 +1347,248 @@ function resetPDF() {
     document.getElementById('pdfResultWrap').style.display = 'none';
     setPDFProgress(false);
     document.getElementById('pdfFileInput').value = '';
+}
+
+// ════════════════════════════════════════════════════════════
+// 멀티 PDF 비교 분석
+// ════════════════════════════════════════════════════════════
+const MPDF_MAX = { current: 3, recommend: 2 };
+const multiPdfState = { current: [], recommend: [] };
+
+function mpdfRenderList(type) {
+    const items  = multiPdfState[type];
+    const max    = MPDF_MAX[type];
+    const listEl = document.getElementById(type === 'current' ? 'currentPdfList' : 'recommendPdfList');
+    const badgeEl= document.getElementById(type === 'current' ? 'currentPdfCountBadge' : 'recommendPdfCountBadge');
+    const addBtn = document.getElementById(type === 'current' ? 'currentPdfAddBtn' : 'recommendPdfAddBtn');
+
+    badgeEl.textContent = `${items.length} / ${max}`;
+    addBtn.disabled = items.length >= max;
+
+    listEl.innerHTML = items.map((f, i) => {
+        const statusHtml = f.loading
+            ? `<span class="mpdf-file-status-load">처리 중…</span>`
+            : f.error
+            ? `<span class="mpdf-file-status-error">⚠ 오류</span>`
+            : `<span class="mpdf-file-status-done">✓ ${f.riders ? f.riders.length + '개 특약' : '완료'}</span>`;
+        return `<div class="mpdf-file-item">
+            <div class="mpdf-file-icon">${f.loading ? '⏳' : f.error ? '⚠️' : '📄'}</div>
+            <div class="mpdf-file-info">
+                <div class="mpdf-file-name" title="${esc(f.name)}">${f.name}</div>
+                <div>${statusHtml}</div>
+            </div>
+            ${!f.loading ? `<button class="mpdf-file-del" onclick="mpdfRemove('${type}',${i})" title="삭제">×</button>` : ''}
+        </div>`;
+    }).join('');
+
+    mpdfUpdateAnalyzeBtn();
+}
+
+function mpdfUpdateAnalyzeBtn() {
+    const hasAny = multiPdfState.current.length > 0 || multiPdfState.recommend.length > 0;
+    const allDone = [...multiPdfState.current, ...multiPdfState.recommend].every(f => !f.loading);
+    const hasCurrentDone = multiPdfState.current.some(f => !f.loading && !f.error && f.riders?.length);
+    document.getElementById('multiPdfAnalyzeWrap').style.display = hasAny ? 'block' : 'none';
+    document.getElementById('multiPdfAnalyzeBtn').disabled = !allDone || !hasCurrentDone;
+}
+
+function mpdfRemove(type, idx) {
+    multiPdfState[type].splice(idx, 1);
+    mpdfRenderList(type);
+    mpdfRenderList(type === 'current' ? 'recommend' : 'current');
+}
+
+async function handleMultiPdfAdd(type, file) {
+    if (!file || file.type !== 'application/pdf') { toast('PDF 파일만 업로드 가능합니다.'); return; }
+    const max = MPDF_MAX[type];
+    if (multiPdfState[type].length >= max) { toast(`최대 ${max}개까지 추가 가능합니다.`); return; }
+
+    const idx = multiPdfState[type].length;
+    multiPdfState[type].push({ name: file.name, loading: true, error: null, riders: null });
+    mpdfRenderList(type);
+    mpdfRenderList(type === 'current' ? 'recommend' : 'current');
+
+    try {
+        const { text } = await extractPDFText(file, () => {});
+        if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
+        const result = await extractRidersWithClaude(text);
+        const riders = (result.riders || []).map(r => ({
+            insurer:   result.insurer || '',
+            product:   result.product || '',
+            rider:     r.name         || '',
+            amount:    r.amount        || '',
+            startDate: r.start_date    || result.policy_start_date || '',
+        }));
+        multiPdfState[type][idx] = { name: file.name, loading: false, error: null, riders };
+        toast(`✓ "${file.name}" — ${riders.length}개 특약 추출 완료`);
+    } catch (err) {
+        multiPdfState[type][idx] = { name: file.name, loading: false, error: err.message, riders: null };
+        toast('⚠ ' + err.message.split('\n')[0]);
+    }
+    mpdfRenderList(type);
+    mpdfRenderList(type === 'current' ? 'recommend' : 'current');
+}
+
+function runMultiPdfAnalysis() {
+    const currentRiders  = multiPdfState.current.flatMap(f => f.riders || []);
+    const recommendRiders= multiPdfState.recommend.flatMap(f => f.riders || []);
+    const combinedRiders = [...currentRiders, ...recommendRiders];
+
+    if (!currentRiders.length) { toast('기존 보장 PDF에서 특약을 먼저 추출해주세요.'); return; }
+
+    // 폼에 현재 보장 적용
+    clearAllRiders();
+    currentRiders.forEach(r => addRider(r));
+
+    showCompareDashboard(currentRiders, recommendRiders, combinedRiders);
+}
+
+function switchCompareTab(tab) {
+    ['current','after','diff'].forEach(t => {
+        const idMap = { current:'tabCurrent', after:'tabAfter', diff:'tabDiff' };
+        const paneMap= { current:'cpCurrent', after:'cpAfter', diff:'cpDiff' };
+        document.getElementById(idMap[t]).classList.toggle('active', t === tab);
+        document.getElementById(paneMap[t]).classList.toggle('active', t === tab);
+    });
+    // Radar chart is rendered lazily in diff tab
+    if (tab === 'diff') {
+        const { _compareRadarData } = window;
+        if (_compareRadarData) drawCompareRadarChart(_compareRadarData.current, _compareRadarData.after);
+    }
+}
+
+function showCompareDashboard(currentRiders, recommendRiders, combinedRiders) {
+    const curScore  = calcCoverageScore(currentRiders);
+    const curGaps   = buildClientGapAnalysis(currentRiders);
+    const afterScore= calcCoverageScore(combinedRiders);
+    const afterGaps = buildClientGapAnalysis(combinedRiders);
+
+    window._compareRadarData = { current: curScore.scores, after: afterScore.scores };
+
+    const fileNames = {
+        current:   multiPdfState.current.map(f => f.name.replace(/\.pdf$/i, '')).join(', '),
+        recommend: multiPdfState.recommend.map(f => f.name.replace(/\.pdf$/i, '')).join(', '),
+    };
+
+    document.getElementById('compareDashboard').innerHTML = `
+    <div class="card fade-in">
+        <div class="card-title">📊 보장 비교 분석</div>
+        <div class="compare-tabs">
+            <button class="compare-tab active" id="tabCurrent" onclick="switchCompareTab('current')">현재 보장</button>
+            <button class="compare-tab" id="tabAfter"   onclick="switchCompareTab('after')">추천 추가 후</button>
+            <button class="compare-tab" id="tabDiff"    onclick="switchCompareTab('diff')">변화 요약</button>
+        </div>
+
+        <div id="cpCurrent" class="compare-tab-pane active">
+            ${fileNames.current ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">📂 ${fileNames.current}</div>` : ''}
+            ${mpdfScoreRow(curScore, null)}
+            ${renderCoverageChecklist(curGaps)}
+        </div>
+
+        <div id="cpAfter" class="compare-tab-pane">
+            ${recommendRiders.length ? `
+            ${fileNames.recommend ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">📂 현재 + ${fileNames.recommend}</div>` : ''}
+            ${mpdfScoreRow(afterScore, curScore)}
+            ${renderCoverageChecklist(afterGaps)}
+            ` : '<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px;">추천 상품 PDF를 추가해주세요.</div>'}
+        </div>
+
+        <div id="cpDiff" class="compare-tab-pane">
+            ${recommendRiders.length
+                ? mpdfDiffContent(curGaps, afterGaps, curScore, afterScore, fileNames.recommend)
+                : '<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px;">추천 상품 PDF를 추가해주세요.</div>'}
+        </div>
+    </div>`;
+
+    const el = document.getElementById('compareDashboard');
+    el.style.display = 'block';
+
+    // sbar 애니메이션
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        el.querySelectorAll('.sbar-fill[data-target]').forEach(b => { b.style.width = b.dataset.target + '%'; });
+    }));
+
+    setTimeout(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+}
+
+function mpdfScoreRow(scoreData, prevScore) {
+    const { total } = scoreData;
+    const g    = gradeOf(total);
+    const diff = prevScore ? total - prevScore.total : null;
+    const diffHtml = diff !== null
+        ? `<span style="font-size:13px;margin-left:8px;color:${diff>0?'var(--success)':diff<0?'var(--danger)':'var(--muted)'};">${diff>0?'▲':diff<0?'▼':'—'} ${Math.abs(diff)}점</span>`
+        : '';
+    return `<div style="display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--border);margin-bottom:14px;">
+        <div class="score-circle ${g.cls}" style="width:72px;height:72px;flex-shrink:0;">
+            <div class="score-num" style="font-size:22px;">${total}</div>
+            <div class="score-unit">점</div>
+        </div>
+        <div>
+            <div class="score-grade-lbl ${g.cls}" style="font-size:15px;">${g.label}${diffHtml}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">종합 보장 점수</div>
+        </div>
+    </div>`;
+}
+
+function mpdfDiffContent(curGaps, afterGaps, curScore, afterScore, recName) {
+    const scoreDiff = afterScore.total - curScore.total;
+    const changes = curGaps.map((before, i) => {
+        const after = afterGaps[i];
+        if (before.status === after.status) return null;
+        return { label: before.label, before: before.status, after: after.status };
+    }).filter(Boolean);
+
+    const changeRows = changes.length ? changes.map(c => {
+        const bCls = c.before === '미가입' ? 's-lim' : 's-cond';
+        const aCls = c.after  === '적정'   ? 's-ok'  : 's-cond';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:13px;font-weight:700;flex:1;">${c.label}</span>
+            <span class="status-badge ${bCls}">${c.before}</span>
+            <span style="color:var(--muted);font-size:12px;">→</span>
+            <span class="status-badge ${aCls}">${c.after}</span>
+        </div>`;
+    }).join('') : `<div style="color:var(--muted);font-size:13px;padding:10px 0;">보장 항목 변화 없음</div>`;
+
+    const scoreColor = scoreDiff > 0 ? 'var(--success)' : scoreDiff < 0 ? 'var(--danger)' : 'var(--muted)';
+    const scoreBg    = scoreDiff > 0 ? '#f0fdf4' : '#f8fafc';
+    const scoreBdr   = scoreDiff > 0 ? '#bbf7d0' : 'var(--border)';
+
+    return `
+    <div style="background:${scoreBg};border:1px solid ${scoreBdr};border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:14px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">추천 상품 추가 시 종합 점수 변화</div>
+        <div style="font-size:22px;font-weight:800;color:${scoreColor};">
+            ${curScore.total}점 → ${afterScore.total}점
+            <span style="font-size:14px;">${scoreDiff > 0 ? `(+${scoreDiff}점 향상)` : scoreDiff === 0 ? '(변화 없음)' : `(${scoreDiff}점)`}</span>
+        </div>
+        ${recName ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;">추천 상품: ${recName}</div>` : ''}
+    </div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px;">보장 항목 변화 (${changes.length}개)</div>
+    ${changeRows}
+    <div style="margin-top:20px;text-align:center;">
+        <canvas id="compareRadarChart" width="260" height="260" style="max-width:100%;"></canvas>
+    </div>`;
+}
+
+function drawCompareRadarChart(currentScores, afterScores) {
+    const canvas = document.getElementById('compareRadarChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    if (window._compareChart) { window._compareChart.destroy(); window._compareChart = null; }
+    const datasets = [
+        { label:'현재 보장', data:currentScores, backgroundColor:'rgba(49,130,246,.12)', borderColor:'rgba(49,130,246,.9)', borderWidth:2, pointBackgroundColor:'rgba(49,130,246,1)', pointRadius:3 },
+        { label:'추천 추가 후', data:afterScores, backgroundColor:'rgba(0,196,113,.12)', borderColor:'rgba(0,196,113,.9)', borderWidth:2, pointBackgroundColor:'rgba(0,196,113,1)', pointRadius:3 },
+        { label:'권장 기준', data:[100,100,100,100,100], backgroundColor:'rgba(0,0,0,0)', borderColor:'rgba(156,163,175,.5)', borderWidth:1.5, borderDash:[5,4], pointRadius:0 },
+    ];
+    window._compareChart = new Chart(canvas, {
+        type:'radar',
+        data:{ labels:['암진단비','뇌혈관','심장','종수술비','실손'], datasets },
+        options:{
+            scales:{ r:{ min:0, max:100, ticks:{ stepSize:25, font:{size:9}, color:'#94a3b8', backdropColor:'transparent' }, grid:{ color:'#e2e8f0' }, pointLabels:{ font:{size:10,weight:'600'}, color:'#334155' } } },
+            plugins:{ legend:{ display:true, position:'bottom', labels:{ font:{size:11}, padding:12 } } },
+            animation:{ duration:700 },
+        },
+    });
 }
 
 // ════════════════════════════════════════════════════════════
