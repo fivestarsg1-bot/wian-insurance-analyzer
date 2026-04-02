@@ -580,39 +580,39 @@
     <!-- ① 멀티 PDF 비교 분석 -->
     <div class="card" id="multiPdfCard">
         <div class="card-title">
-            📄 PDF 보장 비교 분석
-            <span class="badge badge-green">최대 5개</span>
+            📄 보장 비교 분석
+            <span class="badge badge-green">PDF · 이미지</span>
         </div>
 
-        <!-- 기존 보장 PDF (최대 3개) -->
+        <!-- 기존 보장 (최대 3개) -->
         <div class="mpdf-section">
             <div class="mpdf-section-title">
-                🔵 기존 보장 PDF
+                🔵 기존 보장
                 <span class="mpdf-section-badge" id="currentPdfCountBadge">0 / 3</span>
             </div>
             <div id="currentPdfList"></div>
             <button class="mpdf-add-btn" id="currentPdfAddBtn"
                     onclick="document.getElementById('currentPdfInput').click()">
-                + 파일 추가 (토스 리포트 또는 보험증권)
+                + 파일 추가 (PDF · JPG · PNG — 토스 리포트, 보험증권, 스크린샷)
             </button>
-            <input type="file" id="currentPdfInput" accept=".pdf" style="display:none"
+            <input type="file" id="currentPdfInput" accept=".pdf,.jpg,.jpeg,.png" style="display:none"
                    onchange="handleMultiPdfAdd('current', this.files[0]); this.value='';">
         </div>
 
         <hr class="mpdf-divider">
 
-        <!-- 추천 상품 PDF (최대 2개) -->
+        <!-- 추천 상품 (최대 2개) -->
         <div class="mpdf-section">
             <div class="mpdf-section-title">
-                🟢 추천 상품 PDF
+                🟢 추천 상품
                 <span class="mpdf-section-badge" id="recommendPdfCountBadge">0 / 2</span>
             </div>
             <div id="recommendPdfList"></div>
             <button class="mpdf-add-btn" id="recommendPdfAddBtn"
                     onclick="document.getElementById('recommendPdfInput').click()">
-                + 파일 추가 (추천 보험 상품 증권)
+                + 파일 추가 (PDF · JPG · PNG — 추천 보험 상품 증권)
             </button>
-            <input type="file" id="recommendPdfInput" accept=".pdf" style="display:none"
+            <input type="file" id="recommendPdfInput" accept=".pdf,.jpg,.jpeg,.png" style="display:none"
                    onchange="handleMultiPdfAdd('recommend', this.files[0]); this.value='';">
         </div>
 
@@ -1371,8 +1371,9 @@ function mpdfRenderList(type) {
             : f.error
             ? `<span class="mpdf-file-status-error">⚠ 오류</span>`
             : `<span class="mpdf-file-status-done">✓ ${f.riders ? f.riders.length + '개 특약' : '완료'}</span>`;
+        const fileIcon = f.loading ? '⏳' : f.error ? '⚠️' : f.isImg ? '🖼️' : '📄';
         return `<div class="mpdf-file-item">
-            <div class="mpdf-file-icon">${f.loading ? '⏳' : f.error ? '⚠️' : '📄'}</div>
+            <div class="mpdf-file-icon">${fileIcon}</div>
             <div class="mpdf-file-info">
                 <div class="mpdf-file-name" title="${esc(f.name)}">${f.name}</div>
                 <div>${statusHtml}</div>
@@ -1398,31 +1399,86 @@ function mpdfRemove(type, idx) {
     mpdfRenderList(type === 'current' ? 'recommend' : 'current');
 }
 
+function isImageFile(file) {
+    return /^image\/(jpeg|png|webp|gif)/.test(file.type);
+}
+
+// 이미지 → base64 (대용량 안전)
+async function fileToBase64(file) {
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+
+async function extractRidersFromImage(file) {
+    if (file.size > 5 * 1024 * 1024) throw new Error('이미지 크기는 5MB 이하여야 합니다.');
+    const base64    = await fileToBase64(file);
+    const mediaType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    const model     = localStorage.getItem('ai_model') || 'claude-sonnet-4-6';
+
+    const system = `당신은 한국 보험증권·약관 파싱 전문가입니다. 이미지에서 보험 특약 정보를 추출하여 순수 JSON만 반환하세요 (마크다운 코드블록·설명 없이).
+
+## 인식 가능한 이미지 유형
+보험증권 사진, 보험 앱 스크린샷, 카카오톡 보험 캡처, 보험료 납입 내역 화면 등
+
+## 추출 규칙
+- 특약명·가입금액을 빠짐없이 추출
+- 종수술비 계열(수술비Ⅱ, 질병종수술비, 상해종수술비, 수술비II 등) 반드시 포함
+- amount: 보장금액(가입금액)만 기재 — 보험료·월납입액 절대 제외
+- 이미지가 보험과 무관하면 riders 빈 배열로 반환
+
+순수 JSON만 반환:
+{"insurer":"","product":"","policy_start_date":"YYYY-MM-DD","riders":[{"name":"특약명","amount":"가입금액 또는 미확인","start_date":"YYYY-MM-DD"}],"extraction_note":""}`;
+
+    const data = await apiFetch('/api/messages', {
+        model, max_tokens: 4000, system,
+        messages: [{
+            role: 'user',
+            content: [
+                { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+                { type: 'text',  text:  '이 이미지에서 보험 특약 정보를 추출해주세요. 특약명과 가입금액을 빠짐없이 추출하고, 종수술비 계열 항목을 반드시 포함하세요.' }
+            ]
+        }]
+    });
+    return parseAPIJson(data);
+}
+
 async function handleMultiPdfAdd(type, file) {
-    if (!file || file.type !== 'application/pdf') { toast('PDF 파일만 업로드 가능합니다.'); return; }
+    if (!file) return;
+    const isPDF  = file.type === 'application/pdf';
+    const isImg  = isImageFile(file);
+    if (!isPDF && !isImg) { toast('PDF, JPG, PNG 파일만 업로드 가능합니다.'); return; }
+
     const max = MPDF_MAX[type];
     if (multiPdfState[type].length >= max) { toast(`최대 ${max}개까지 추가 가능합니다.`); return; }
 
     const idx = multiPdfState[type].length;
-    multiPdfState[type].push({ name: file.name, loading: true, error: null, riders: null });
+    multiPdfState[type].push({ name: file.name, loading: true, error: null, riders: null, isImg });
     mpdfRenderList(type);
     mpdfRenderList(type === 'current' ? 'recommend' : 'current');
 
     try {
-        const { text } = await extractPDFText(file, () => {});
-        if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
-        const result = await extractRidersWithClaude(text);
+        let result;
+        if (isImg) {
+            result = await extractRidersFromImage(file);
+        } else {
+            const { text } = await extractPDFText(file, () => {});
+            if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
+            result = await extractRidersWithClaude(text);
+        }
         const riders = (result.riders || []).map(r => ({
             insurer:   result.insurer || '',
             product:   result.product || '',
-            rider:     r.name         || '',
-            amount:    r.amount        || '',
-            startDate: r.start_date    || result.policy_start_date || '',
+            rider:     r.name          || '',
+            amount:    r.amount         || '',
+            startDate: r.start_date     || result.policy_start_date || '',
         }));
-        multiPdfState[type][idx] = { name: file.name, loading: false, error: null, riders };
+        multiPdfState[type][idx] = { name: file.name, loading: false, error: null, riders, isImg };
         toast(`✓ "${file.name}" — ${riders.length}개 특약 추출 완료`);
     } catch (err) {
-        multiPdfState[type][idx] = { name: file.name, loading: false, error: err.message, riders: null };
+        multiPdfState[type][idx] = { name: file.name, loading: false, error: err.message, riders: null, isImg };
         toast('⚠ ' + err.message.split('\n')[0]);
     }
     mpdfRenderList(type);
