@@ -4,23 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>내 손안의 손해사정사</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         :root {
-            --primary: #1d4ed8; --primary-dark: #1e3a8a; --primary-light: #dbeafe;
-            --bg: #f1f5f9; --card: #ffffff; --border: #e2e8f0;
-            --text: #1e293b; --muted: #64748b;
-            --success: #10b981; --danger: #ef4444;
-            --radius: 12px; --radius-sm: 8px;
-            --shadow: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
-            --shadow-md: 0 4px 6px -1px rgba(0,0,0,.1);
+            --primary: #3182F6; --primary-dark: #1B6ADB; --primary-light: #EBF3FF;
+            --bg: #F2F4F6; --card: #ffffff; --border: #E5E8EB;
+            --text: #191F28; --muted: #8B95A1;
+            --success: #00C471; --danger: #F04452;
+            --radius: 16px; --radius-sm: 12px;
+            --shadow: 0 2px 8px rgba(0,0,0,.06);
+            --shadow-md: 0 4px 20px rgba(0,0,0,.08);
         }
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
             background: var(--bg); color: var(--text); min-height:100vh; line-height:1.6;
         }
 
@@ -28,7 +30,7 @@
         #passwordGate {
             display: none;
             position: fixed; inset: 0; z-index: 1000;
-            background: linear-gradient(135deg, var(--primary-dark) 0%, #2563eb 60%, #1d4ed8 100%);
+            background: linear-gradient(135deg, var(--primary-dark) 0%, #3182F6 60%, #5ba0f9 100%);
             align-items: center; justify-content: center; padding: 20px;
         }
         .gate-card {
@@ -72,7 +74,7 @@
 
         /* ── Header ── */
         .header {
-            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            background: linear-gradient(135deg, #1B6ADB 0%, #3182F6 100%);
             color: white; padding: 14px 20px;
             display:flex; justify-content:space-between; align-items:center;
             position:sticky; top:0; z-index:100; box-shadow:var(--shadow-md);
@@ -184,7 +186,7 @@
         .loading-step { font-size:12px; color:var(--primary); margin-top:8px; min-height:18px; }
 
         /* ── Results ── */
-        .result-header { background:linear-gradient(135deg,var(--primary-dark),var(--primary)); color:white; border-radius:var(--radius); padding:20px; margin-bottom:14px; }
+        .result-header { background:linear-gradient(135deg,#1B6ADB,#3182F6); color:white; border-radius:var(--radius); padding:20px; margin-bottom:14px; }
         .result-header h2 { font-size:17px; font-weight:700; }
         .result-header small { font-size:11px; opacity:.8; }
         .total-amount { font-size:30px; font-weight:800; letter-spacing:-1px; }
@@ -296,7 +298,7 @@
         .prec-card-text { font-size:12px; color:#44403c; line-height:1.6; white-space:pre-wrap; }
 
         /* ── Toss Card ── */
-        .toss-header-bar { background:linear-gradient(135deg,#0055ff,#3b82f6); color:white; border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:12px; display:flex; align-items:center; gap:12px; }
+        .toss-header-bar { background:linear-gradient(135deg,#1B6ADB,#3182F6); color:white; border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:12px; display:flex; align-items:center; gap:12px; }
         .toss-policy-block { margin-bottom:8px; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
         .toss-policy-head { background:var(--primary-light); padding:7px 12px; display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:var(--primary); }
         .toss-rider-row { display:flex; justify-content:space-between; align-items:center; padding:6px 12px; border-top:1px solid var(--border); font-size:13px; }
