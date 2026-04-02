@@ -435,6 +435,23 @@
         .compare-tab-pane { display:none; }
         .compare-tab-pane.active { display:block; }
 
+        /* ── DB Accordion ── */
+        .db-acc-header { cursor:pointer; user-select:none; }
+        .db-acc-body { display:none; margin-top:14px; }
+        .db-acc-body.open { display:block; }
+        .db-acc-arrow { font-style:normal; transition:transform .2s; display:inline-block; color:var(--muted); font-size:13px; margin-left:2px; }
+        .db-acc-arrow.open { transform:rotate(180deg); }
+        .db-search-wrap { position:relative; margin-bottom:10px; }
+        .db-search-input { width:100%; padding:8px 12px 8px 32px; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-size:13px; font-family:inherit; color:var(--text); background:#fafbff; transition:border-color .2s; }
+        .db-search-input:focus { outline:none; border-color:var(--primary); }
+        .db-search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:13px; pointer-events:none; }
+        .db-pagination { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
+        .db-pag-info { font-size:11px; color:var(--muted); }
+        .db-pag-btns { display:flex; align-items:center; gap:4px; }
+        .db-pag-btn { padding:4px 10px; border:1.5px solid var(--border); border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; background:white; color:var(--text); transition:all .15s; font-family:inherit; }
+        .db-pag-btn:hover:not(:disabled) { border-color:var(--primary); color:var(--primary); }
+        .db-pag-btn:disabled { opacity:.4; cursor:not-allowed; }
+
         /* ── Print ── */
         @media print {
             #passwordGate { display:none!important; }
@@ -658,35 +675,55 @@
 
     <!-- ① 약관 지식 DB -->
     <div class="card" id="kdbCard">
-        <div class="card-title" style="flex-wrap:wrap;gap:8px;">
-            🗄️ 약관 지식 DB <span class="badge" id="kdbBadge">0개</span>
+        <div class="card-title db-acc-header" style="flex-wrap:wrap;gap:8px;" onclick="toggleDBAccordion('kdb')">
+            🗄️ 약관 지식 DB
+            <span class="badge" id="kdbBadge">0개</span>
             <div style="flex:1;"></div>
-            <button class="btn btn-outline btn-sm" style="border-color:#7c3aed;color:#7c3aed;" onclick="document.getElementById('kdbFileInput').click()">+ 약관 PDF 추가</button>
-            <input type="file" id="kdbFileInput" accept=".pdf" style="display:none" onchange="handleKDBUpload(this.files[0])">
+            <button class="btn btn-outline btn-sm" style="border-color:#7c3aed;color:#7c3aed;"
+                    onclick="event.stopPropagation();document.getElementById('kdbFileInput').click()">+ PDF 추가</button>
+            <input type="file" id="kdbFileInput" accept=".pdf" style="display:none"
+                   onchange="handleKDBUpload(this.files[0]); this.value='';">
+            <i class="db-acc-arrow" id="kdbArrow">▾</i>
         </div>
-        <div id="kdbList">
-            <div class="kdb-empty">저장된 약관이 없습니다.<br><span style="font-size:12px;">약관 PDF를 추가하면 보장 분석 시 자동으로 참조합니다.</span></div>
-        </div>
-        <div id="kdbProgress" style="display:none;" class="pdf-progress">
-            <div class="pdf-progress-text" id="kdbProgressText"></div>
-            <div class="pdf-progress-bar-wrap"><div class="pdf-progress-bar" id="kdbProgressBar" style="width:0%"></div></div>
+        <div class="db-acc-body" id="kdbBody">
+            <div id="kdbProgress" style="display:none;" class="pdf-progress">
+                <div class="pdf-progress-text" id="kdbProgressText"></div>
+                <div class="pdf-progress-bar-wrap"><div class="pdf-progress-bar" id="kdbProgressBar" style="width:0%"></div></div>
+            </div>
+            <div class="db-search-wrap">
+                <span class="db-search-icon">🔍</span>
+                <input class="db-search-input" id="kdbSearch" placeholder="약관명 검색…"
+                       oninput="dbSearchChange('kdb')">
+            </div>
+            <div id="kdbList"></div>
+            <div id="kdbPagination" class="db-pagination" style="display:none;"></div>
         </div>
     </div>
 
     <!-- ② 판례 DB -->
     <div class="card" id="pdbCard">
-        <div class="card-title" style="flex-wrap:wrap;gap:8px;">
-            ⚖️ 판례 DB <span class="badge" style="background:#fef9c3;color:#854d0e;" id="pdbBadge">0개</span>
+        <div class="card-title db-acc-header" style="flex-wrap:wrap;gap:8px;" onclick="toggleDBAccordion('pdb')">
+            ⚖️ 판례 DB
+            <span class="badge" style="background:#fef9c3;color:#854d0e;" id="pdbBadge">0개</span>
             <div style="flex:1;"></div>
-            <button class="btn btn-outline btn-sm" style="border-color:#d97706;color:#d97706;" onclick="document.getElementById('pdbFileInput').click()">+ 판례 PDF 추가</button>
-            <input type="file" id="pdbFileInput" accept=".pdf" style="display:none" onchange="handlePDBUpload(this.files[0])">
+            <button class="btn btn-outline btn-sm" style="border-color:#d97706;color:#d97706;"
+                    onclick="event.stopPropagation();document.getElementById('pdbFileInput').click()">+ PDF 추가</button>
+            <input type="file" id="pdbFileInput" accept=".pdf" style="display:none"
+                   onchange="handlePDBUpload(this.files[0]); this.value='';">
+            <i class="db-acc-arrow" id="pdbArrow">▾</i>
         </div>
-        <div id="pdbList">
-            <div class="kdb-empty">저장된 판례가 없습니다.<br><span style="font-size:12px;">금융감독원 분쟁조정 사례 PDF를 추가하면 보장 분석 시 자동으로 참조합니다.</span></div>
-        </div>
-        <div id="pdbProgress" style="display:none;" class="pdf-progress">
-            <div class="pdf-progress-text" id="pdbProgressText"></div>
-            <div class="pdf-progress-bar-wrap"><div class="pdf-progress-bar" id="pdbProgressBar" style="width:0%"></div></div>
+        <div class="db-acc-body" id="pdbBody">
+            <div id="pdbProgress" style="display:none;" class="pdf-progress">
+                <div class="pdf-progress-text" id="pdbProgressText"></div>
+                <div class="pdf-progress-bar-wrap"><div class="pdf-progress-bar" id="pdbProgressBar" style="width:0%"></div></div>
+            </div>
+            <div class="db-search-wrap">
+                <span class="db-search-icon">🔍</span>
+                <input class="db-search-input" id="pdbSearch" placeholder="판례명 검색…"
+                       oninput="dbSearchChange('pdb')">
+            </div>
+            <div id="pdbList"></div>
+            <div id="pdbPagination" class="db-pagination" style="display:none;"></div>
         </div>
     </div>
 
@@ -1696,10 +1733,98 @@ async function savePDFToKDB() {
     } catch (e) { toast('⚠ 저장 실패: ' + e.message); }
 }
 
+// ════════════════════════════════════════════════════════════
+// DB 아코디언 / 검색 / 페이지네이션 공통
+// ════════════════════════════════════════════════════════════
+const DB_PAGE = 10;
+const _dbState = {
+    kdb: { page: 0, q: '', docs: [] },
+    pdb: { page: 0, q: '', docs: [] },
+};
+
+function toggleDBAccordion(type) {
+    const body  = document.getElementById(type + 'Body');
+    const arrow = document.getElementById(type + 'Arrow');
+    const open  = body.classList.toggle('open');
+    arrow.classList.toggle('open', open);
+}
+
+function dbSearchChange(type) {
+    _dbState[type].q    = document.getElementById(type + 'Search').value.trim();
+    _dbState[type].page = 0;
+    _renderDBPage(type);
+}
+
+function dbPageChange(type, np) {
+    _dbState[type].page = np;
+    _renderDBPage(type);
+}
+
+function _renderDBPage(type) {
+    const { page, q, docs } = _dbState[type];
+    const isKDB    = type === 'kdb';
+    const icon     = isKDB ? '📋' : '⚖️';
+    const delFn    = isKDB ? 'deleteKDBDoc' : 'deletePrecDoc';
+    const metaKey  = isKDB ? '섹션' : '청크';
+    const listEl   = document.getElementById(type + 'List');
+    const pagEl    = document.getElementById(type + 'Pagination');
+    const emptyMsg = isKDB
+        ? '저장된 약관이 없습니다.<br><span style="font-size:12px;">+ PDF 추가 버튼으로 약관을 등록하면 분석 시 자동 참조합니다.</span>'
+        : '저장된 판례가 없습니다.<br><span style="font-size:12px;">금융감독원 분쟁조정 사례 PDF를 추가하면 보장 분석 시 자동으로 참조합니다.</span>';
+
+    const filtered = q ? docs.filter(d => d.name.toLowerCase().includes(q.toLowerCase())) : docs;
+    const total    = filtered.length;
+    const pages    = Math.ceil(total / DB_PAGE) || 1;
+    const safeP    = Math.min(page, pages - 1);
+    if (safeP !== page) _dbState[type].page = safeP;
+    const slice = filtered.slice(safeP * DB_PAGE, (safeP + 1) * DB_PAGE);
+
+    if (!total) {
+        listEl.innerHTML = `<div class="kdb-empty">${q ? `"${q}" 검색 결과가 없습니다.` : emptyMsg}</div>`;
+        pagEl.style.display = 'none';
+        return;
+    }
+
+    listEl.innerHTML = slice.map(d => {
+        const date = d.addedAt ? new Date(d.addedAt).toLocaleDateString('ko-KR') : '-';
+        return `<div class="kdb-doc-item">
+            <div class="kdb-doc-name">${icon} ${d.name}</div>
+            <div class="kdb-doc-meta">${d.chunkCount}${metaKey} · ${date}</div>
+            <button class="kdb-doc-del" onclick="${delFn}('${d.id}')" title="삭제">×</button>
+        </div>`;
+    }).join('');
+
+    if (pages <= 1) {
+        pagEl.style.display = 'none';
+    } else {
+        pagEl.style.display = 'flex';
+        const cur = safeP;
+        pagEl.innerHTML = `
+            <span class="db-pag-info">${total}개 중 ${cur * DB_PAGE + 1}–${Math.min((cur + 1) * DB_PAGE, total)}</span>
+            <div class="db-pag-btns">
+                <button class="db-pag-btn" onclick="dbPageChange('${type}',${cur - 1})" ${cur === 0 ? 'disabled' : ''}>‹ 이전</button>
+                <span style="padding:4px 8px;font-size:11px;color:var(--muted);">${cur + 1} / ${pages}</span>
+                <button class="db-pag-btn" onclick="dbPageChange('${type}',${cur + 1})" ${cur >= pages - 1 ? 'disabled' : ''}>다음 ›</button>
+            </div>`;
+    }
+}
+
 // 약관 전용 PDF 업로드 (청킹만, Claude 호출 없음)
 async function handleKDBUpload(file) {
     if (!file || file.type !== 'application/pdf') { toast('PDF 파일만 가능합니다.'); return; }
-    document.getElementById('kdbFileInput').value = '';
+    const name = file.name.replace(/\.pdf$/i, '');
+
+    // 중복 확인
+    const dup = _dbState.kdb.docs.find(d => d.name === name);
+    if (dup) {
+        if (!confirm(`"${name}"은 이미 등록된 약관입니다.\n덮어쓸까요? (기존 데이터가 삭제됩니다)`)) return;
+        await KDB.deleteDocument(dup.id);
+    }
+
+    // 아코디언 자동 열기
+    const body = document.getElementById('kdbBody');
+    if (!body.classList.contains('open')) toggleDBAccordion('kdb');
+
     const setP = (show, text = '', pct = 0) => {
         document.getElementById('kdbProgress').style.display = show ? 'block' : 'none';
         if (show) {
@@ -1714,13 +1839,11 @@ async function handleKDBUpload(file) {
         );
         if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
         setP(true, 'DB에 저장 중…', 85);
-        const name = file.name.replace(/\.pdf$/i, '');
-        const id   = 'kdb_' + Date.now();
-        const n    = await KDB.addDocument(id, name, text);
+        const id = 'kdb_' + Date.now();
+        const n  = await KDB.addDocument(id, name, text);
         setP(false);
         toast(`✓ "${name}" 저장 완료 (${n}개 섹션, ${pages}페이지)`);
         renderKDBList();
-        // 수술 분류표 자동 감지
         const autoRows = detectSurgTableFromText(text);
         if (autoRows.length) showSurgAutoBanner(autoRows, name);
     } catch (err) {
@@ -1731,21 +1854,10 @@ async function handleKDBUpload(file) {
 
 async function renderKDBList() {
     try {
-        const docs  = await KDB.listDocuments();
-        const badge = document.getElementById('kdbBadge');
-        const list  = document.getElementById('kdbList');
-        badge.textContent = docs.length + '개';
-        if (!docs.length) {
-            list.innerHTML = '<div class="kdb-empty">저장된 약관이 없습니다.<br><span style="font-size:12px;">약관 PDF를 추가하면 보장 분석 시 자동으로 참조합니다.</span></div>';
-            return;
-        }
-        list.innerHTML = docs.map(d =>
-            `<div class="kdb-doc-item">
-                <div class="kdb-doc-name">📋 ${d.name}</div>
-                <div class="kdb-doc-meta">${d.chunkCount}섹션</div>
-                <button class="kdb-doc-del" onclick="deleteKDBDoc('${d.id}')" title="삭제">×</button>
-            </div>`
-        ).join('');
+        const docs = await KDB.listDocuments();
+        _dbState.kdb.docs = docs;
+        document.getElementById('kdbBadge').textContent = docs.length + '개';
+        _renderDBPage('kdb');
     } catch(_) {}
 }
 
@@ -1761,51 +1873,53 @@ async function deleteKDBDoc(id) {
 // ════════════════════════════════════════════════════════════
 async function handlePDBUpload(file) {
     if (!file || file.type !== 'application/pdf') { toast('PDF 파일만 업로드 가능합니다.'); return; }
-    document.getElementById('pdbFileInput').value = '';
-    document.getElementById('pdbProgress').style.display = 'block';
-    document.getElementById('pdbProgressText').textContent = 'PDF 읽는 중…';
-    document.getElementById('pdbProgressBar').style.width = '10%';
+    const name = file.name.replace(/\.pdf$/i, '');
+
+    // 중복 확인
+    const dup = _dbState.pdb.docs.find(d => d.name === name);
+    if (dup) {
+        if (!confirm(`"${name}"은 이미 등록된 판례입니다.\n덮어쓸까요? (기존 데이터가 삭제됩니다)`)) return;
+        await PDB.deleteDocument(dup.id);
+    }
+
+    // 아코디언 자동 열기
+    const body = document.getElementById('pdbBody');
+    if (!body.classList.contains('open')) toggleDBAccordion('pdb');
+
+    const setP = (show, text = '', pct = 0) => {
+        document.getElementById('pdbProgress').style.display = show ? 'block' : 'none';
+        if (show) {
+            document.getElementById('pdbProgressText').textContent = text;
+            document.getElementById('pdbProgressBar').style.width  = pct + '%';
+        }
+    };
+    setP(true, 'PDF 읽는 중…', 10);
     try {
-        const { text } = await extractPDFText(file, (p, tot) => {
-            document.getElementById('pdbProgressText').textContent = `텍스트 추출 중… (${p}/${tot}페이지)`;
-            document.getElementById('pdbProgressBar').style.width = Math.round(10 + p / tot * 60) + '%';
-        });
+        const { text, pages } = await extractPDFText(file, (p, tot) =>
+            setP(true, `텍스트 추출 중… (${p}/${tot}페이지)`, Math.round(10 + p / tot * 60))
+        );
         if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
-        document.getElementById('pdbProgressText').textContent = '판례 DB에 저장 중…';
-        document.getElementById('pdbProgressBar').style.width = '80%';
-        const id   = 'prec_' + Date.now();
-        const name = file.name.replace(/\.pdf$/i, '');
-        const n    = await PDB.addDocument(id, name, text);
-        document.getElementById('pdbProgressBar').style.width = '100%';
-        document.getElementById('pdbProgressText').textContent = `완료! (${n}개 청크 저장됨)`;
-        setTimeout(() => { document.getElementById('pdbProgress').style.display = 'none'; }, 1500);
-        toast(`판례 저장 완료 (${n}개 청크)`);
+        setP(true, '판례 DB에 저장 중…', 80);
+        const id = 'prec_' + Date.now();
+        const n  = await PDB.addDocument(id, name, text);
+        setP(true, `완료! (${n}개 청크 저장됨)`, 100);
+        setTimeout(() => setP(false), 1200);
+        toast(`✓ "${name}" 판례 저장 완료 (${n}개 청크, ${pages}페이지)`);
         renderPDBList();
     } catch (err) {
-        document.getElementById('pdbProgress').style.display = 'none';
+        setP(false);
         toast('⚠ ' + err.message.split('\n')[0]);
     }
 }
 
 async function renderPDBList() {
-    const el    = document.getElementById('pdbList');
-    const badge = document.getElementById('pdbBadge');
     try {
         const docs = await PDB.listDocuments();
-        badge.textContent = docs.length + '개';
-        if (!docs.length) {
-            el.innerHTML = '<div class="kdb-empty">저장된 판례가 없습니다.<br><span style="font-size:12px;">금융감독원 분쟁조정 사례 PDF를 추가하면 보장 분석 시 자동으로 참조합니다.</span></div>';
-            return;
-        }
-        el.innerHTML = docs.map(d => `
-            <div class="kdb-doc-item">
-                <span style="font-size:16px;">⚖️</span>
-                <span class="kdb-doc-name">${d.name}</span>
-                <span class="kdb-doc-meta">${d.chunkCount}청크</span>
-                <button class="kdb-doc-del" onclick="deletePrecDoc('${d.id}')" title="삭제">×</button>
-            </div>`).join('');
+        _dbState.pdb.docs = docs;
+        document.getElementById('pdbBadge').textContent = docs.length + '개';
+        _renderDBPage('pdb');
     } catch (_) {
-        badge.textContent = '-';
+        document.getElementById('pdbBadge').textContent = '-';
     }
 }
 
