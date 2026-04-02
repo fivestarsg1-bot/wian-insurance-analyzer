@@ -452,6 +452,25 @@
         .db-pag-btn:hover:not(:disabled) { border-color:var(--primary); color:var(--primary); }
         .db-pag-btn:disabled { opacity:.4; cursor:not-allowed; }
 
+        /* ── Rider Group Accordion ── */
+        .rider-group { border:1.5px solid var(--border); border-radius:var(--radius-sm); margin-bottom:10px; overflow:hidden; }
+        .rider-group-header { display:flex; align-items:center; gap:10px; padding:11px 14px; cursor:pointer; background:#f7f8fc; user-select:none; transition:background .15s; }
+        .rider-group-header:hover { background:#eef1fb; }
+        .rider-group-name { font-size:13px; font-weight:700; color:var(--text); flex:1; }
+        .rider-group-sub  { font-size:11px; color:var(--muted); margin-left:6px; }
+        .rider-group-count { font-size:11px; font-weight:700; color:var(--primary); background:var(--primary-light); padding:2px 9px; border-radius:20px; white-space:nowrap; }
+        .rider-group-arrow { font-size:14px; color:var(--muted); transition:transform .2s; line-height:1; }
+        .rider-group-arrow.open { transform:rotate(180deg); }
+        .rider-group-body { display:none; padding:10px 10px 4px; }
+        .rider-group-body.open { display:block; }
+        /* summary bar */
+        .rider-summary-bar { display:none; align-items:center; justify-content:space-between; padding:7px 2px 10px; gap:8px; flex-wrap:wrap; }
+        .rider-summary-bar.visible { display:flex; }
+        .rider-summary-text { font-size:12px; color:var(--muted); font-weight:600; }
+        .rider-summary-btns { display:flex; gap:6px; }
+        .rider-summary-btn { padding:4px 11px; border:1.5px solid var(--border); border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; background:white; color:var(--text); transition:all .15s; font-family:inherit; }
+        .rider-summary-btn:hover { border-color:var(--primary); color:var(--primary); }
+
         /* ── Print ── */
         @media print {
             #passwordGate { display:none!important; }
@@ -769,6 +788,13 @@
             📋 보험 가입 정보
             <span class="badge" id="riderBadge">특약 1개</span>
         </div>
+        <div class="rider-summary-bar" id="riderSummaryBar">
+            <span class="rider-summary-text" id="riderSummaryText"></span>
+            <div class="rider-summary-btns">
+                <button class="rider-summary-btn" onclick="expandAllGroups()">전체 펼치기</button>
+                <button class="rider-summary-btn" onclick="collapseAllGroups()">전체 접기</button>
+            </div>
+        </div>
         <div id="ridersContainer"></div>
         <button class="btn btn-ghost" style="width:100%;margin-top:4px;" id="addRiderBtn" onclick="addRider()">+ 특약 추가</button>
     </div>
@@ -970,25 +996,91 @@ function setHosp(v) {
 // ════════════════════════════════════════════════════════════
 // Rider management
 // ════════════════════════════════════════════════════════════
+function esc(s) { return String(s).replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+// ── 아코디언 그룹 관리 ───────────────────────────────────────
+function _groupKey(insurer, product) { return (insurer + '|' + product); }
+function _groupLabel(insurer, product) {
+    if (!insurer && !product) return '직접 입력';
+    return [insurer, product].filter(Boolean).join(' · ');
+}
+
+function _findGroup(key) {
+    return Array.from(document.querySelectorAll('.rider-group')).find(g => g.dataset.gkey === key) || null;
+}
+
+function _createGroup(key, insurer, product) {
+    const label = _groupLabel(insurer, product);
+    const g = document.createElement('div');
+    g.className = 'rider-group';
+    g.dataset.gkey = key;
+    g.innerHTML = `
+        <div class="rider-group-header" onclick="toggleRiderGroup(this.parentElement)">
+            <span class="rider-group-name">${esc(label)}</span>
+            <span class="rider-group-count">특약 0개</span>
+            <span class="rider-group-arrow">▾</span>
+        </div>
+        <div class="rider-group-body"></div>`;
+    document.getElementById('ridersContainer').appendChild(g);
+    return g;
+}
+
+function _updateGroupCount(group) {
+    const n = group.querySelectorAll('.rider-card').length;
+    const cnt = group.querySelector('.rider-group-count');
+    if (cnt) cnt.textContent = `특약 ${n}개`;
+}
+
+function toggleRiderGroup(group) {
+    const body  = group.querySelector('.rider-group-body');
+    const arrow = group.querySelector('.rider-group-arrow');
+    const open  = body.classList.toggle('open');
+    arrow.classList.toggle('open', open);
+}
+function expandAllGroups()   { document.querySelectorAll('.rider-group').forEach(g => { g.querySelector('.rider-group-body').classList.add('open'); g.querySelector('.rider-group-arrow').classList.add('open'); }); }
+function collapseAllGroups() { document.querySelectorAll('.rider-group').forEach(g => { g.querySelector('.rider-group-body').classList.remove('open'); g.querySelector('.rider-group-arrow').classList.remove('open'); }); }
+
+function _updateSummaryBar() {
+    // '|' 키 = 보험사/상품명 없는 "직접 입력" 그룹 → 파싱된 상품 카운트에서 제외
+    const pdfGroups = Array.from(document.querySelectorAll('.rider-group')).filter(g => g.dataset.gkey !== '|');
+    const total     = document.querySelectorAll('.rider-card').length;
+    const bar       = document.getElementById('riderSummaryBar');
+    const txt       = document.getElementById('riderSummaryText');
+    if (pdfGroups.length > 0) {
+        bar.classList.add('visible');
+        txt.textContent = `총 ${pdfGroups.length}개 상품 / ${total}개 특약 파싱됨`;
+    } else {
+        bar.classList.remove('visible');
+    }
+}
+
 function addRider(prefill = {}) {
     riderSeq++;
     const id = `rider_${riderSeq}`;
+    const insurer = prefill.insurer || '';
+    const product = prefill.product || '';
+    const key = _groupKey(insurer, product);
+
+    // 기존 그룹 찾거나 새로 생성
+    let group = _findGroup(key);
+    if (!group) group = _createGroup(key, insurer, product);
+
     const div = document.createElement('div');
     div.className = 'rider-card fade-in';
     div.id = id;
     div.innerHTML = `
         <div class="rider-header">
             <span class="rider-num">특약 ${riderSeq}</span>
-            ${riderSeq > 1 ? `<button class="rider-del" onclick="delRider('${id}')" title="삭제">×</button>` : ''}
+            <button class="rider-del" onclick="delRider('${id}')" title="삭제">×</button>
         </div>
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">보험사명</label>
-                <input type="text" class="form-control" data-f="insurer" placeholder="예: 삼성화재" value="${esc(prefill.insurer||'')}">
+                <input type="text" class="form-control" data-f="insurer" placeholder="예: 삼성화재" value="${esc(insurer)}">
             </div>
             <div class="form-group">
                 <label class="form-label">상품명</label>
-                <input type="text" class="form-control" data-f="product" placeholder="예: 무배당 건강보험" value="${esc(prefill.product||'')}">
+                <input type="text" class="form-control" data-f="product" placeholder="예: 무배당 건강보험" value="${esc(product)}">
             </div>
         </div>
         <div class="form-row">
@@ -1005,11 +1097,28 @@ function addRider(prefill = {}) {
             <label class="form-label">가입일자</label>
             <input type="date" class="form-control" data-f="startDate" value="${esc(prefill.startDate||'')}">
         </div>`;
-    document.getElementById('ridersContainer').appendChild(div);
+
+    group.querySelector('.rider-group-body').appendChild(div);
+    _updateGroupCount(group);
     refreshRiderBadge();
+    _updateSummaryBar();
 }
-function esc(s) { return String(s).replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
-function delRider(id) { document.getElementById(id)?.remove(); refreshRiderBadge(); renumberRiders(); }
+
+function delRider(id) {
+    const card = document.getElementById(id);
+    if (!card) return;
+    const group = card.closest('.rider-group');
+    card.remove();
+    if (group) {
+        _updateGroupCount(group);
+        // 그룹이 비면 제거
+        if (!group.querySelectorAll('.rider-card').length) group.remove();
+    }
+    refreshRiderBadge();
+    renumberRiders();
+    _updateSummaryBar();
+}
+
 function refreshRiderBadge() {
     const n = document.querySelectorAll('.rider-card').length;
     document.getElementById('riderBadge').textContent = `특약 ${n}개`;
@@ -1022,7 +1131,9 @@ function renumberRiders() {
 }
 function clearAllRiders() {
     document.getElementById('ridersContainer').innerHTML = '';
-    riderSeq = 0; refreshRiderBadge();
+    riderSeq = 0;
+    refreshRiderBadge();
+    _updateSummaryBar();
 }
 function getRiders() {
     return Array.from(document.querySelectorAll('.rider-card')).map((c,i) => ({
@@ -1404,6 +1515,7 @@ function applyPDFRiders() {
     const selected = (pdfExtracted.riders||[]).filter((_,i)=>selectedIdxs.has(i));
     clearAllRiders();
     selected.forEach(r => addRider({ insurer:pdfExtracted.insurer||'', product:pdfExtracted.product||'', rider:r.name||'', amount:r.amount||'', startDate:r.start_date||pdfExtracted.policy_start_date||'' }));
+    expandAllGroups();
     toast(`✓ ${selected.length}개 특약이 폼에 적용되었습니다.`);
     document.getElementById('ridersContainer').scrollIntoView({ behavior:'smooth', block:'start' });
 }
@@ -1562,6 +1674,7 @@ function runMultiPdfAnalysis() {
     // 폼에 현재 보장 적용
     clearAllRiders();
     currentRiders.forEach(r => addRider(r));
+    expandAllGroups();
 
     showCompareDashboard(currentRiders, recommendRiders, combinedRiders);
 }
