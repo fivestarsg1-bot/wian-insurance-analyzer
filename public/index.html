@@ -796,10 +796,16 @@ function parseAPIJson(data) {
         .replace(/\s*```[\s\S]*$/i, '')
         .trim();
 
-    if (!cleaned.startsWith('{')) {
-        const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
-        if (s === -1 || e === -1) throw new Error('응답에서 JSON을 찾을 수 없습니다.\n' + raw.slice(0,200));
-        cleaned = raw.slice(s, e+1);
+    if (!cleaned.startsWith('{') && !cleaned.startsWith('[')) {
+        const so = raw.indexOf('{'), ao = raw.indexOf('[');
+        const start = (so === -1) ? ao : (ao === -1) ? so : Math.min(so, ao);
+        const end   = cleaned.startsWith('[') ? raw.lastIndexOf(']') : raw.lastIndexOf('}');
+        if (start === -1) throw new Error('응답에서 JSON을 찾을 수 없습니다.\n' + raw.slice(0,200));
+        cleaned = raw.slice(start, end+1);
+    }
+    // 배열 응답(배치 호출)을 객체로 감싸기
+    if (cleaned.startsWith('[')) {
+        cleaned = `{"rider_analysis":${cleaned}}`;
     }
     try { return JSON.parse(cleaned); } catch(e) {
         const lb = cleaned.lastIndexOf('}');
@@ -1787,18 +1793,17 @@ async function buildSurgDBContext(diagnosis, surgName) {
 }
 
 // ════════════════════════════════════════════════════════════
-// Main Analysis
+// Main Analysis — 5개씩 배치 분석
 // ════════════════════════════════════════════════════════════
+const BATCH_SIZE = 5;
+
 async function analyze() {
     const diagnosis = document.getElementById('diagnosis').value.trim();
     if (!diagnosis) { alert('진단명 또는 증상을 입력해주세요.'); return; }
     const riders = getRiders();
     if (!riders.length) { alert('특약 정보를 최소 1개 입력해주세요 (특약명 필수).'); return; }
 
-    const today = new Date().toISOString().split('T')[0];
-    const riderLines = riders.map(r =>
-        `  [특약${r.idx}] 보험사: ${r.insurer||'미입력'} | 상품: ${r.product||'미입력'} | 특약명: ${r.rider} | 가입금액: ${r.amount||'미입력'} | 가입일: ${fmtDate(r.startDate)} | ${fmtElapsed(daysSince(r.startDate))}`
-    ).join('\n');
+    const today    = new Date().toISOString().split('T')[0];
     const surgText = hasSurg ? `수술 있음 / 수술명: ${document.getElementById('surgName').value.trim()||'미입력'}` : '수술 없음';
     const hospText = hasHosp ? `입원 / 입원일수: ${document.getElementById('hospDays').value||'미입력'}일` : '외래·통원 치료';
 
@@ -1808,18 +1813,12 @@ async function analyze() {
     const surgName  = hasSurg ? document.getElementById('surgName').value.trim() : '';
     const surgDBCtx = await buildSurgDBContext(diagnosis, surgName);
 
-    const userPrompt = `[기준일: ${today}]\n\n[보험 특약 정보]\n${riderLines}\n\n[진단·치료 정보]\n진단명/증상: ${diagnosis}\n수술: ${surgText}\n입원: ${hospText}\n기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}\n사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${surgCtx}${surgDBCtx}${rag.text}${prec.text}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`;
+    // 공통 컨텍스트 (모든 배치에서 재사용)
+    const baseCtx = `[기준일: ${today}]\n[진단·치료]\n진단명: ${diagnosis} / 수술: ${surgText} / 입원: ${hospText}\n기타: ${document.getElementById('otherTx').value.trim()||'없음'} / 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${surgCtx}${surgDBCtx}${rag.text}${prec.text}`;
 
-    const systemPrompt = `한국 손해보험 손해사정사. KCD-8 코드, 직접원인, 실손 자기부담금 기준 적용.
-[면책기간·감액기간 적용 규칙 — 특약별 엄격히 구분]
-1. 암 관련 특약(암진단비, 암입원, 암수술 등): 면책기간 90일 + 감액기간 1년 50%
-2. 뇌혈관·심장 관련 진단비(뇌졸중, 뇌경색, 급성심근경색 등): 면책기간 없음 + 감액기간 1~2년 50%
-3. 수술비 특약(질병수술비, 상해수술비, 수술비II 등): 면책기간 없음 + 감액기간 없음. 1~3종/1~5종 구분은 반드시 [수술명 분류 DB]를 참조하여 정확하게 판단할 것. DB에 없는 수술은 의학적 침습도와 유사 수술 사례를 기준으로 추정.
-4. 상해 관련 특약 전체(상해입원, 상해후유장해, 상해사망 등): 면책기간 없음 + 감액기간 없음
-5. 기타 질병 특약(일반입원, 실손 등): 면책기간 30~180일 + 감액기간 1~2년 50%
-순수 JSON만 반환 (코드블록 없이):
-{"kcd_analysis":{"estimated_codes":[],"disease_category":"","description":""},"coverage_classification":{"3대진단":false,"입원":false,"수술":false,"실손":false,"상해":false,"간병":false,"explanation":""},"period_check":{"exemption_applicable":false,"exemption_detail":"","reduction_applicable":false,"reduction_detail":"","direct_cause_met":true,"direct_cause_detail":""},"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":"","notes":""}],"total_estimated":0,"total_description":"","customer_script":"","important_notes":[],"coverage_gaps":[{"category":"","status":"미가입","current":"","recommend":"","reason":""}],"disclaimer":""}
-coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나. coverage_gaps: 미가입·부족 항목만 (최대 5개), status는 "미가입"/"부족" 중 하나.`;
+    // 배치 분할
+    const batches = [];
+    for (let i = 0; i < riders.length; i += BATCH_SIZE) batches.push(riders.slice(i, i + BATCH_SIZE));
 
     const btn = document.getElementById('analyzeBtn');
     btn.disabled = true; btn.textContent = '분석 중…';
@@ -1831,26 +1830,86 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한" 중 하나. cov
     if (prec.refs.length) refMsgs.push(`판례: ${prec.refs.join(', ')}`);
     if (refMsgs.length) document.getElementById('loadingStep').textContent = `DB 참조 중: ${refMsgs.join(' | ')}`;
 
-    const steps = ['KCD 코드 분류 중…','약관 면책 조항 검토 중…','특약별 보장 요건 분석 중…','청구 가능 금액 계산 중…','고객 설명 멘트 생성 중…'];
+    const steps = ['KCD 코드 분류 중…','면책 조항 검토 중…','특약별 보장 분석 중…','금액 계산 중…','고객 멘트 생성 중…'];
     let si = 0;
     const stepTimer = setInterval(() => { document.getElementById('loadingStep').textContent = steps[si++%steps.length]; }, 1300);
 
+    const model = localStorage.getItem('ai_model') || 'claude-sonnet-4-6';
+
     try {
-        const model = localStorage.getItem('ai_model') || 'claude-sonnet-4-6';
-        const data = await apiFetch('/api/messages', {
-            model, max_tokens: 4096, system: systemPrompt,
-            messages: [{ role:'user', content: userPrompt }]
+        // ── 1차 호출: 공통 분석 + 첫 번째 배치 ─────────────────
+        if (batches.length > 1) {
+            document.getElementById('loadingStep').textContent =
+                `특약 분석 중… (1/${batches.length} 배치 · 총 ${riders.length}개)`;
+        }
+        const data1 = await apiFetch('/api/messages', {
+            model, max_tokens: 4096, system: makeMainSystemPrompt(),
+            messages: [{ role: 'user', content:
+                `${baseCtx}\n\n[특약 목록 (${batches[0].length}개)]\n${makeRiderLines(batches[0])}\n\n위 내용을 분석하여 JSON으로만 응답하세요.`
+            }]
         });
+        const result = parseAPIJson(data1);
+
+        // ── 추가 배치 호출 ────────────────────────────────────────
+        if (batches.length > 1) {
+            const pc = result.period_check || {};
+            const periodSummary =
+                `면책:${pc.exemption_applicable?'해당':'미해당'}/감액:${pc.reduction_applicable?'해당':'미해당'}/직접원인:${pc.direct_cause_met!==false?'충족':'미충족'}`;
+
+            for (let b = 1; b < batches.length; b++) {
+                document.getElementById('loadingStep').textContent =
+                    `특약 분석 중… (${b+1}/${batches.length} 배치)`;
+                const dataB = await apiFetch('/api/messages', {
+                    model, max_tokens: 2048, system: makeBatchSystemPrompt(),
+                    messages: [{ role: 'user', content:
+                        `진단: ${diagnosis} / ${surgText} / ${periodSummary}${surgCtx}\n\n[특약 목록 (${batches[b].length}개)]\n${makeRiderLines(batches[b])}\n\n{"rider_analysis":[...]} 형태로 반환하세요.`
+                    }]
+                });
+                const batchResult = parseAPIJson(dataB);
+                result.rider_analysis = (result.rider_analysis || []).concat(batchResult.rider_analysis || []);
+            }
+
+            // 전체 합산 금액 재계산
+            result.total_estimated  = (result.rider_analysis || []).reduce((s, ra) => s + (ra.final_amount || 0), 0);
+            result.total_description = fmtAmount(result.total_estimated);
+        }
+
         clearInterval(stepTimer);
-        renderResults(parseAPIJson(data), riders, rag.refs, prec.refs, prec.chunks);
+        renderResults(result, riders, rag.refs, prec.refs, prec.chunks);
     } catch (err) {
         clearInterval(stepTimer);
-        document.getElementById('resultsSection').innerHTML = `<div class="card"><div class="error-box"><strong>⚠️ 분석 오류</strong><br><br>${err.message}</div></div>`;
+        document.getElementById('resultsSection').innerHTML =
+            `<div class="card"><div class="error-box"><strong>⚠️ 분석 오류</strong><br><br>${err.message}</div></div>`;
         document.getElementById('resultsSection').style.display = 'block';
     } finally {
         btn.disabled = false; btn.textContent = '🔍 AI 보장 분석 시작';
         document.getElementById('loadingCard').style.display = 'none';
     }
+}
+
+// 특약 목록 → 프롬프트 텍스트
+function makeRiderLines(batch) {
+    return batch.map(r =>
+        `  [특약${r.idx}] 보험사: ${r.insurer||'미입력'} | 상품: ${r.product||'미입력'} | 특약명: ${r.rider} | 가입금액: ${r.amount||'미입력'} | 가입일: ${fmtDate(r.startDate)} | ${fmtElapsed(daysSince(r.startDate))}`
+    ).join('\n');
+}
+
+// 1차 호출용 시스템 프롬프트 (전체 JSON 스키마)
+function makeMainSystemPrompt() {
+    return `한국 손해보험 손해사정사. KCD-8 코드·직접원인·실손 자기부담금 기준 적용.
+면책·감액 규칙: ①암특약 90일면책+1년50%감액 ②뇌혈관·심장진단비 감액1~2년50% ③수술비·상해특약 면책없음 ④기타질병 30~180일면책+1~2년50%감액. 수술1~3종/1~5종은 [수술명 분류 DB] 최우선 참조.
+reason 2문장 이내. customer_script 3문장 이내. coverage_gaps 최대 3개. important_notes 최대 3개. 순수 JSON만 반환 (코드블록 없이):
+{"kcd_analysis":{"estimated_codes":[],"disease_category":"","description":""},"coverage_classification":{"3대진단":false,"입원":false,"수술":false,"실손":false,"상해":false,"간병":false,"explanation":""},"period_check":{"exemption_applicable":false,"exemption_detail":"","reduction_applicable":false,"reduction_detail":"","direct_cause_met":true,"direct_cause_detail":""},"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":""}],"total_estimated":0,"total_description":"","customer_script":"","important_notes":[],"coverage_gaps":[{"category":"","status":"미가입","current":"","recommend":"","reason":""}],"disclaimer":""}
+coverage_status: "보장가능"/"조건부보장"/"보장제한". coverage_gaps status: "미가입"/"부족".`;
+}
+
+// 2차+ 배치 호출용 시스템 프롬프트 (rider_analysis 배열만)
+function makeBatchSystemPrompt() {
+    return `한국 손해사정사. 주어진 특약들만 분석하여 {"rider_analysis":[...]} 형태로 반환.
+면책·감액: 암특약 90일+1년50% / 뇌혈관·심장 감액1~2년50% / 수술비·상해 없음 / 기타질병 30~180일+1~2년50%. 수술종류는 [수술 분류표] 참조.
+reason 2문장 이내. 순수 JSON만 반환 (코드블록 없이):
+{"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":""}]}
+coverage_status: "보장가능"/"조건부보장"/"보장제한".`;
 }
 
 // ════════════════════════════════════════════════════════════
