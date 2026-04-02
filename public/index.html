@@ -3017,169 +3017,212 @@ function openPrintReport() {
     const agentPhone = document.getElementById('pdfAgentPhone').value.trim();
     hidePDFModal();
 
-    const canvas   = document.getElementById('coverageRadarChart');
-    const radarImg = canvas ? canvas.toDataURL('image/png') : '';
-    const riders   = (_lastRiders && _lastRiders.length) ? _lastRiders : getRiders();
+    const riders    = (_lastRiders && _lastRiders.length) ? _lastRiders : getRiders();
+    const diagnosis = document.getElementById('diagnosis').value.trim();
 
     const win = window.open('', '_blank');
     if (!win) { toast('⚠ 팝업이 차단되었습니다. 브라우저에서 팝업 허용 후 다시 시도하세요.'); return; }
-    win.document.write(buildPrintHTML(clientName, agentName, agentPhone, radarImg, riders, _lastResult));
+    win.document.write(buildPrintHTML(clientName, agentName, agentPhone, riders, _lastResult, diagnosis));
     win.document.close();
 }
 
-function buildPrintHTML(clientName, agentName, agentPhone, radarImg, riders, result) {
-    const scoreData   = calcCoverageScore(riders);
-    const gapData     = buildClientGapAnalysis(riders);
-    const grade       = gradeOf(scoreData.total);
-    const GC          = { gA:'#00C471', gB:'#3182F6', gC:'#F9B416', gD:'#F04452' };
-    const gradeColor  = GC[grade.cls];
-    const today       = new Date();
-    const dateStr     = `${today.getFullYear()}년 ${today.getMonth()+1}월 ${today.getDate()}일`;
-    const ds          = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
-    const filename    = `보장분석_${clientName}_${ds}`;
-    const axes        = ['암진단비','뇌혈관','심장','종수술비','실손'];
+function inferRiderCategory(name) {
+    if (/암\s*(진단|특약|보장)/.test(name)) return '암 진단비';
+    if (/뇌(졸중|혈관|경색|출혈)|뇌혈관\s*질환/.test(name)) return '뇌혈관 진단비';
+    if (/심근경색|허혈성\s*심장/.test(name)) return '심장 진단비';
+    if (/종\s*수술비|수술비\s*(II|Ⅱ|2)|(질병|상해)\s*종/.test(name)) return '종수술비';
+    if (/(질병|상해|특정)?\s*수술비/.test(name)) return '수술비';
+    if (/암\s*(입원|통원)/.test(name)) return '암 입원일당';
+    if (/입원일당|(질병|상해)\s*입원/.test(name)) return '입원일당';
+    if (/실손|의료비|(입원|통원|외래)\s*의료/.test(name)) return '실손의료비';
+    if (/비급여|항암/.test(name)) return '비급여 암치료비';
+    if (/순환계/.test(name)) return '순환계 치료비';
+    if (/후유장해/.test(name)) return '후유장해';
+    if (/사망/.test(name)) return '사망보험금';
+    return '기타 보장';
+}
 
-    /* ── 종합 점수 프로그레스 바 ── */
-    const scoreBars = scoreData.scores.map((s, i) => {
+function buildPrintHTML(clientName, agentName, agentPhone, riders, result, diagnosis) {
+    const scoreData  = calcCoverageScore(riders);
+    const gapData    = buildClientGapAnalysis(riders);
+    const grade      = gradeOf(scoreData.total);
+    const GC         = { gA:'#00C471', gB:'#3182F6', gC:'#F9B416', gD:'#F04452' };
+    const gc         = GC[grade.cls];
+    const today      = new Date();
+    const dateStr    = `${today.getFullYear()}년 ${today.getMonth()+1}월 ${today.getDate()}일`;
+    const ds         = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+    const axes       = ['암진단비','뇌혈관','심장','종수술비','실손'];
+    const ras        = (result?.rider_analysis || []);
+
+    /* ── 한줄 요약 ── */
+    const totalAmt   = result?.total_estimated || 0;
+    const surgAmt    = ras.filter(ra => /수술/.test(ra.rider_name) && ra.coverage_status !== '보장제한')
+                         .reduce((s, ra) => s + (ra.final_amount || 0), 0);
+    const diagLabel  = diagnosis || result?.kcd_analysis?.disease_category || '해당 질환';
+    const summary1   = totalAmt
+        ? `현재 보장으로 <strong>${diagLabel}</strong> 진단 시 약 <strong style="color:#3182F6;font-size:18px;">${fmtAmount(totalAmt)}원</strong> 수령 가능`
+        : `<strong>${diagLabel}</strong> 진단 시 보장 분석 결과`;
+    const summary2   = surgAmt
+        ? `수술 포함 시 약 <strong>${fmtAmount(surgAmt)}원</strong> 추가 수령 가능`
+        : '';
+
+    /* ── 종합 점수 바 ── */
+    const scoreBars = axes.map((lbl, i) => {
+        const s = scoreData.scores[i];
         const c = GC[gradeOf(s).cls];
-        return `<div style="margin-bottom:8px;">
-            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
-                <b style="color:#191F28;">${axes[i]}</b><span style="color:#8B95A1;">${s}점</span>
+        return `<div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+                <b style="color:#191F28;">${lbl}</b><span style="color:#8B95A1;">${s}점</span>
             </div>
-            <div style="height:6px;background:#E5E8EB;border-radius:3px;">
-                <div style="height:100%;width:${s}%;background:${c};border-radius:3px;"></div>
+            <div style="height:7px;background:#E5E8EB;border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${s}%;background:${c};border-radius:4px;"></div>
             </div>
         </div>`;
     }).join('');
 
-    /* ── 보장 현황 체크리스트 (7개 전체) ── */
-    const clItems = gapData.map(gd => {
-        const icon   = gd.status === '적정' ? '✅' : gd.status === '부족' ? '⚠️' : '❌';
-        const txtClr = gd.status === '적정' ? '#166534' : gd.status === '부족' ? '#92400e' : '#991b1b';
-        const bg     = gd.status === '적정' ? '#f0fdf4' : gd.status === '부족' ? '#fffbeb' : '#fff5f5';
-        const bd     = gd.status === '적정' ? '#bbf7d0' : gd.status === '부족' ? '#fde68a' : '#fecaca';
-        const detail = gd.status === '적정' ? gd.current
-            : gd.status === '부족' ? `현재 ${gd.current} · 권장 ${gd.recommend}`
-            : `미가입 · 권장 ${gd.recommend}`;
-        return `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 12px;background:${bg};border:1.5px solid ${bd};border-radius:8px;">
-            <span style="font-size:16px;flex-shrink:0;">${icon}</span>
-            <div><div style="font-size:12px;font-weight:700;color:#191F28;">${gd.label}</div>
-            <div style="font-size:10px;color:${txtClr};margin-top:2px;">${detail}</div></div>
-        </div>`;
-    }).join('');
+    /* ── 보장 가능 항목 (카테고리별 합산, 특약명 노출 없음) ── */
+    const catMap = {};
+    ras.forEach(ra => {
+        if (ra.coverage_status === '보장제한') return;
+        const cat = inferRiderCategory(ra.rider_name);
+        if (!catMap[cat]) catMap[cat] = { amt: 0, status: ra.coverage_status };
+        catMap[cat].amt += ra.final_amount || 0;
+        if (ra.coverage_status === '보장가능') catMap[cat].status = '보장가능';
+    });
 
-    /* ── AI 분석 테이블 (있을 때만) ── */
-    let aiSection = '';
-    if (result && (result.rider_analysis || []).length) {
-        const rows = result.rider_analysis.map((ra, i) => {
-            const orig = riders[i] || {};
-            const sc = ra.coverage_status==='보장가능' ? '#00C471' : ra.coverage_status==='조건부보장' ? '#F9B416' : '#F04452';
-            return `<tr>
-                <td style="padding:5px 7px;font-size:11px;font-weight:600;border-bottom:1px solid #F2F4F6;">${ra.rider_name}</td>
-                <td style="padding:5px 7px;font-size:10px;color:#8B95A1;border-bottom:1px solid #F2F4F6;">${[orig.insurer,orig.product].filter(Boolean).join('/')}</td>
-                <td style="padding:5px 7px;border-bottom:1px solid #F2F4F6;"><span style="background:${sc}22;color:${sc};padding:1px 7px;border-radius:6px;font-size:10px;font-weight:700;">${ra.coverage_status}</span></td>
-                <td style="padding:5px 7px;font-size:11px;font-weight:700;text-align:right;border-bottom:1px solid #F2F4F6;">${ra.amount_description||fmtAmount(ra.final_amount)+'원'}</td>
-            </tr>`;
-        }).join('');
-        const total = result.total_estimated
-            ? `<div style="text-align:right;margin-top:6px;font-size:13px;font-weight:800;color:#3182F6;">예상 총 보험금 ${result.total_description||fmtAmount(result.total_estimated)}원</div>` : '';
-        const script = result.customer_script
-            ? `<div style="margin-top:12px;padding:10px 14px;background:#EBF3FF;border-radius:8px;font-size:11px;line-height:1.8;color:#1B6ADB;">${result.customer_script}</div>` : '';
-        aiSection = `<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #E5E8EB;">
-            <div style="font-size:12px;font-weight:800;color:#191F28;margin-bottom:8px;">📋 특약별 보장 분석</div>
-            <table style="width:100%;border-collapse:collapse;">
-                <thead><tr style="background:#F2F4F6;">
-                    <th style="padding:6px 7px;text-align:left;font-size:10px;font-weight:700;color:#8B95A1;">특약명</th>
-                    <th style="padding:6px 7px;text-align:left;font-size:10px;font-weight:700;color:#8B95A1;">보험사/상품</th>
-                    <th style="padding:6px 7px;text-align:left;font-size:10px;font-weight:700;color:#8B95A1;">보장여부</th>
-                    <th style="padding:6px 7px;text-align:right;font-size:10px;font-weight:700;color:#8B95A1;">예상금액</th>
-                </tr></thead>
-                <tbody>${rows}</tbody>
-            </table>${total}${script}
-        </div>`;
-    }
-
-    /* ── 추가 가입 권유 (미가입/부족만) ── */
-    const gapItems = gapData.filter(gd => gd.status !== '적정');
-    const gapSection = gapItems.length ? `<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #E5E8EB;">
-        <div style="font-size:12px;font-weight:800;color:#191F28;margin-bottom:8px;">📌 추가 가입 권유</div>
-        ${gapItems.map(gd => {
-            const c = gd.status === '미가입' ? '#F04452' : '#F9B416';
-            return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #F2F4F6;">
-                <span style="background:${c}22;color:${c};padding:1px 8px;border-radius:6px;font-size:10px;font-weight:700;white-space:nowrap;">${gd.status}</span>
-                <div><span style="font-size:11px;font-weight:700;">${gd.label}</span>
-                <span style="font-size:10px;color:#8B95A1;margin-left:6px;">권장: ${gd.recommend}${gd.current&&gd.current!=='미가입'?' · 현재: '+gd.current:''}</span></div>
+    const covRows = Object.entries(catMap)
+        .filter(([, v]) => v.amt > 0)
+        .sort((a, b) => b[1].amt - a[1].amt)
+        .map(([cat, v]) => {
+            const isCond = v.status === '조건부보장';
+            const sc = isCond ? '#F9B416' : '#00C471';
+            const sb = isCond ? '#fffbeb' : '#f0fdf4';
+            return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #F2F4F6;">
+                <div style="flex:1;font-size:14px;font-weight:700;color:#191F28;">${cat}</div>
+                <div style="font-size:20px;font-weight:800;color:#191F28;letter-spacing:-.5px;">${fmtAmount(v.amt)}<span style="font-size:13px;font-weight:500;color:#8B95A1;">원</span></div>
+                <span style="background:${sb};color:${sc};font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;">${v.status}</span>
             </div>`;
-        }).join('')}
-    </div>` : '';
+        }).join('');
+
+    const limitRows = ras.filter(ra => ra.coverage_status === '보장제한').map(ra => {
+        const cat = inferRiderCategory(ra.rider_name);
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F2F4F6;">
+            <span style="background:#fee2e2;color:#991b1b;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;">보장제한</span>
+            <span style="font-size:13px;font-weight:600;color:#191F28;">${cat}</span>
+            <span style="font-size:11px;color:#8B95A1;flex:1;">${ra.reason ? ra.reason.slice(0,60) : ''}</span>
+        </div>`;
+    }).join('');
+
+    /* ── 보완 필요 ── */
+    const gapItems = gapData.filter(g => g.status !== '적정');
+    const gapRows  = gapItems.map(g => {
+        const bb = g.status==='미가입'?'#fee2e2':'#fef3c7';
+        const bc = g.status==='미가입'?'#991b1b':'#92400e';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #F2F4F6;">
+            <span style="background:${bb};color:${bc};font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;">${g.status}</span>
+            <b style="font-size:13px;color:#191F28;">${g.label}</b>
+            <span style="font-size:12px;color:#8B95A1;flex:1;">권장 ${g.recommend}${g.current&&g.current!=='미가입'?' · 현재 '+g.current:''}</span>
+        </div>`;
+    }).join('');
 
     return `<!DOCTYPE html>
-<html lang="ko"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>${filename}</title>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>보장분석_${clientName}_${ds}</title>
 <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Pretendard',-apple-system,sans-serif;color:#191F28;background:#F2F4F6;line-height:1.5;}
-.page{width:794px;margin:24px auto;background:#fff;border-radius:16px;padding:44px 48px;box-shadow:0 4px 24px rgba(0,0,0,.1);}
-.print-bar{width:794px;margin:0 auto 14px;display:flex;gap:10px;}
-.print-btn{flex:1;padding:12px;background:#3182F6;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;}
+.print-bar{background:#fff;border-bottom:1px solid #E5E8EB;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.print-btn{background:#3182F6;color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;}
 .print-btn:hover{background:#1B6ADB;}
-@page{size:A4;margin:12mm 16mm;}
+.page{width:210mm;min-height:297mm;margin:20px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1);padding:12mm 15mm;}
+@page{size:A4;margin:10mm 13mm;}
 @media print{
     body{background:#fff;}
-    .print-bar{display:none;}
-    .page{width:100%;margin:0;border-radius:0;padding:0;box-shadow:none;}
-    *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+    .print-bar{display:none!important;}
+    .page{width:100%;margin:0;padding:0;border-radius:0;box-shadow:none;min-height:unset;}
+    *{print-color-adjust:exact;-webkit-print-color-adjust:exact;}
 }
-</style></head><body>
+</style>
+</head>
+<body>
 <div class="print-bar">
+    <span style="font-size:13px;font-weight:700;">📄 보장 분석 리포트 — ${clientName} 님</span>
     <button class="print-btn" onclick="window.print()">🖨️ 인쇄하기</button>
 </div>
 <div class="page">
-    <!-- 헤더 -->
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:14px;margin-bottom:20px;border-bottom:3px solid #3182F6;">
-        <div>
-            <div style="font-size:10px;color:#8B95A1;letter-spacing:.5px;margin-bottom:3px;text-transform:uppercase;">내 손안의 손해사정사</div>
-            <div style="font-size:22px;font-weight:800;letter-spacing:-.5px;">보장 분석 리포트</div>
-        </div>
-        <div style="text-align:right;font-size:11px;color:#8B95A1;line-height:2;">
-            <div>고객명 <strong style="color:#191F28;font-size:15px;font-weight:800;">${clientName}</strong></div>
-            <div>작성일 ${dateStr}</div>
-        </div>
+
+<!-- 헤더 -->
+<div style="display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:12px;margin-bottom:18px;border-bottom:3px solid #3182F6;">
+    <div>
+        <div style="font-size:9px;color:#8B95A1;letter-spacing:.8px;text-transform:uppercase;margin-bottom:3px;">내 손안의 손해사정사</div>
+        <div style="font-size:22px;font-weight:800;letter-spacing:-.5px;">보장 분석 리포트</div>
+        ${diagnosis?`<div style="font-size:12px;color:#3182F6;font-weight:600;margin-top:3px;">진단명: ${diagnosis}</div>`:''}
     </div>
-
-    <!-- 종합 점수 -->
-    <div style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #E5E8EB;">
-        <div style="font-size:12px;font-weight:800;color:#191F28;margin-bottom:12px;">📊 종합 보장 점수</div>
-        <div style="display:flex;gap:20px;align-items:center;">
-            <div style="flex-shrink:0;text-align:center;">
-                <div style="width:84px;height:84px;border-radius:50%;border:4px solid ${gradeColor};display:flex;flex-direction:column;align-items:center;justify-content:center;background:${gradeColor}18;margin:0 auto 6px;">
-                    <div style="font-size:28px;font-weight:800;color:${gradeColor};line-height:1.1;">${scoreData.total}</div>
-                    <div style="font-size:10px;color:${gradeColor};font-weight:600;">점</div>
-                </div>
-                <div style="font-size:13px;font-weight:700;color:${gradeColor};">${grade.label}</div>
-            </div>
-            ${radarImg ? `<img src="${radarImg}" style="width:150px;height:150px;flex-shrink:0;">` : ''}
-            <div style="flex:1;">${scoreBars}</div>
-        </div>
-    </div>
-
-    <!-- 보장 현황 체크리스트 -->
-    <div style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #E5E8EB;">
-        <div style="font-size:12px;font-weight:800;color:#191F28;margin-bottom:10px;">📋 보장 현황 체크리스트</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">${clItems}</div>
-    </div>
-
-    ${aiSection}${gapSection}
-
-    <!-- 푸터 -->
-    <div style="border-top:1px solid #E5E8EB;padding-top:12px;">
-        ${agentName||agentPhone ? `<div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:5px;">담당 설계사: <strong>${agentName}</strong>${agentPhone?` &nbsp;·&nbsp; ${agentPhone}`:''}</div>` : ''}
-        <div style="font-size:9px;color:#8B95A1;line-height:1.7;">본 분석 리포트는 참고 목적으로 제공되며 실제 보험금 지급 여부는 해당 보험사의 최종 심사 결과에 따라 달라질 수 있습니다. 이 문서는 법적 효력이 없으며 정확한 보장 내용은 해당 보험사에 문의하시기 바랍니다.</div>
+    <div style="text-align:right;font-size:11px;color:#8B95A1;line-height:2.1;">
+        <div>고객명 <strong style="color:#191F28;font-size:15px;font-weight:800;">${clientName}</strong></div>
+        <div>${dateStr}</div>
     </div>
 </div>
-</body></html>`;
+
+<!-- 한줄 요약 -->
+<div style="background:linear-gradient(135deg,#EBF3FF,#F0F7FF);border:1.5px solid #BFDBFE;border-radius:12px;padding:16px 20px;margin-bottom:18px;">
+    <div style="font-size:13px;line-height:1.9;color:#1e3a5f;">${summary1}</div>
+    ${summary2?`<div style="font-size:12px;color:#3182F6;font-weight:600;margin-top:4px;">📌 ${summary2}</div>`:''}
+</div>
+
+<!-- 종합 보장 점수 -->
+<div style="display:flex;gap:18px;align-items:center;background:#F8FAFC;border-radius:12px;padding:16px 18px;margin-bottom:18px;">
+    <div style="text-align:center;flex-shrink:0;">
+        <div style="width:88px;height:88px;border-radius:50%;border:5px solid ${gc};background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto;">
+            <div style="font-size:30px;font-weight:800;color:${gc};line-height:1.1;">${scoreData.total}</div>
+            <div style="font-size:11px;color:${gc};font-weight:600;">점</div>
+        </div>
+        <div style="font-size:14px;font-weight:800;color:${gc};margin-top:6px;">${grade.label}</div>
+        <div style="font-size:10px;color:#8B95A1;">종합 보장 점수</div>
+    </div>
+    <div style="flex:1;">${scoreBars}</div>
+</div>
+
+<!-- 보장 가능 항목 -->
+${covRows ? `<div style="margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:800;color:#191F28;padding-bottom:8px;border-bottom:2px solid #F2F4F6;margin-bottom:2px;">✅ 보장 가능 항목</div>
+    ${covRows}
+    ${totalAmt?`<div style="display:flex;justify-content:flex-end;align-items:baseline;gap:6px;padding:12px 0 0;"><span style="font-size:12px;color:#8B95A1;">예상 총 보험금</span><span style="font-size:22px;font-weight:800;color:#3182F6;">${fmtAmount(totalAmt)}</span><span style="font-size:13px;color:#3182F6;font-weight:600;">원</span></div>`:''}
+</div>` : ''}
+
+<!-- 보장 제한 항목 -->
+${limitRows ? `<div style="margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:800;color:#191F28;padding-bottom:8px;border-bottom:2px solid #F2F4F6;margin-bottom:2px;">🚫 보장 제한 항목</div>
+    ${limitRows}
+</div>` : ''}
+
+<!-- 보완 필요 항목 -->
+${gapRows ? `<div style="background:#FFF9F9;border:1px solid #FECACA;border-radius:12px;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:800;color:#991B1B;margin-bottom:10px;">⚠️ 보완 필요 항목</div>
+    ${gapRows}
+</div>` : `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:14px 16px;margin-bottom:16px;text-align:center;">
+    <div style="font-size:13px;font-weight:700;color:#166534;">✅ 주요 보장 항목 모두 적정 수준 가입 확인</div>
+</div>`}
+
+<!-- 고객 멘트 -->
+${result?.customer_script ? `<div style="background:#EBF3FF;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:12px;line-height:1.9;color:#1B6ADB;">${result.customer_script}</div>` : ''}
+
+<!-- 푸터 -->
+<div style="border-top:1px solid #E5E8EB;padding-top:12px;margin-top:4px;">
+    ${agentName||agentPhone?`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">
+        ${agentName?`<span style="font-size:13px;font-weight:700;">담당: ${agentName}</span>`:'<span></span>'}
+        ${agentPhone?`<span style="font-size:13px;color:#3182F6;font-weight:600;">${agentPhone}</span>`:''}
+    </div>`:''}
+    <div style="font-size:10px;color:#8B95A1;line-height:1.7;">⚖️ 이 리포트는 AI 기반 참고자료이며, 실제 보험금 지급 여부는 보험사 약관 및 최종 심사 기준에 따라 달라질 수 있습니다. 법적 효력이 없으며 정확한 보장 내용은 해당 보험사에 문의하시기 바랍니다.</div>
+</div>
+
+</div><!-- /page -->
+</body>
+</html>`;
 }
 
 function resetAll() {
