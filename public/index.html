@@ -3034,7 +3034,16 @@ function makeRiderLines(batch) {
 // 1차 호출용 시스템 프롬프트 (전체 JSON 스키마)
 function makeMainSystemPrompt() {
     return `한국 손해보험 손해사정사. KCD-8 코드·직접원인·실손 자기부담금 기준 적용.
-면책·감액 규칙: ①암특약 90일면책+1년50%감액 ②뇌혈관·심장진단비 감액1~2년50% ③수술비·상해특약 면책없음 ④기타질병 30~180일면책+1~2년50%감액. 수술1~3종/1~5종은 [수술명 분류 DB] 최우선 참조.
+
+## 암 진단비 적용 기준 (절대 원칙)
+- 암 진단비는 반드시 악성종양(KCD C00-C97) 또는 상피내암(D00-D09)에만 적용.
+- 양성종양(D10-D36)·행동양식불명확종양(D37-D48)·용종(폴립)·낭종·섬유종은 암 진단비 미해당.
+- 특히 대장용종(D12.x)·위용종(D13.1)·자궁근종(D25.x) 등은 암 진단비 보장제한.
+- coverage_classification["3대진단"]은 악성종양·뇌졸중·급성심근경색 확정 진단 시에만 true.
+
+## 면책·감액 규칙
+①암특약 90일면책+1년50%감액 ②뇌혈관·심장진단비 감액1~2년50% ③수술비·상해특약 면책없음 ④기타질병 30~180일면책+1~2년50%감액. 수술1~3종/1~5종은 [수술명 분류 DB] 최우선 참조.
+
 reason 2문장 이내. customer_script 3문장 이내. coverage_gaps 최대 3개. important_notes 최대 3개. 순수 JSON만 반환 (코드블록 없이):
 {"kcd_analysis":{"estimated_codes":[],"disease_category":"","description":""},"coverage_classification":{"3대진단":false,"입원":false,"수술":false,"실손":false,"상해":false,"간병":false,"explanation":""},"period_check":{"exemption_applicable":false,"exemption_detail":"","reduction_applicable":false,"reduction_detail":"","direct_cause_met":true,"direct_cause_detail":""},"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":""}],"total_estimated":0,"total_description":"","customer_script":"","important_notes":[],"coverage_gaps":[{"category":"","status":"미가입","current":"","recommend":"","reason":""}],"disclaimer":""}
 coverage_status: "보장가능"/"조건부보장"/"보장제한". coverage_gaps status: "미가입"/"부족".`;
@@ -3043,6 +3052,7 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한". coverage_gaps 
 // 2차+ 배치 호출용 시스템 프롬프트 (rider_analysis 배열만)
 function makeBatchSystemPrompt() {
     return `한국 손해사정사. 주어진 특약들만 분석하여 {"rider_analysis":[...]} 형태로 반환.
+암 진단비: 악성종양(C00-C97)/상피내암(D00-D09)만 해당. 양성종양(D10-D36)·용종·섬유종 등은 암 진단비 보장제한.
 면책·감액: 암특약 90일+1년50% / 뇌혈관·심장 감액1~2년50% / 수술비·상해 없음 / 기타질병 30~180일+1~2년50%. 수술종류는 [수술 분류표] 참조.
 reason 2문장 이내. 순수 JSON만 반환 (코드블록 없이):
 {"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":""}]}
