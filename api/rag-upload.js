@@ -14,8 +14,9 @@ module.exports = async (req, res) => {
 
     try {
         const raw = await readBody(req);
-        const { doc_id, doc_name, text } = JSON.parse(raw);
-        if (!doc_id || !doc_name || !text) return sendJSON(res, 400, { error: '필수 필드 누락 (doc_id, doc_name, text)' });
+        const { doc_id, doc_name, text: rawText } = JSON.parse(raw);
+        if (!doc_id || !doc_name || !rawText) return sendJSON(res, 400, { error: '필수 필드 누락 (doc_id, doc_name, text)' });
+        const text = rawText.replace(/\u0000/g, '');
 
         // 기존 동일 문서 삭제 (덮어쓰기)
         await supaFetch('/rest/v1/rpc/delete_policy_doc', {
@@ -29,7 +30,7 @@ module.exports = async (req, res) => {
             doc_id,
             doc_name,
             chunk_index,
-            chunk_text,
+            chunk_text: chunk_text.replace(/\u0000/g, ''),
             embedding: `[${textToVector(chunk_text).join(',')}]`,
         }));
 
