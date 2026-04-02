@@ -1981,9 +1981,13 @@ async function renderKDBList() {
 
 async function deleteKDBDoc(id) {
     if (!confirm('이 약관을 DB에서 삭제하시겠습니까?')) return;
-    await KDB.deleteDocument(id);
-    toast('삭제되었습니다.');
-    renderKDBList();
+    try {
+        await KDB.deleteDocument(id);
+        toast('삭제되었습니다.');
+        renderKDBList();
+    } catch (err) {
+        toast('⚠ 삭제 실패: ' + err.message.split('\n')[0]);
+    }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2043,9 +2047,13 @@ async function renderPDBList() {
 
 async function deletePrecDoc(id) {
     if (!confirm('이 판례를 DB에서 삭제하시겠습니까?')) return;
-    await PDB.deleteDocument(id);
-    toast('삭제되었습니다.');
-    renderPDBList();
+    try {
+        await PDB.deleteDocument(id);
+        toast('삭제되었습니다.');
+        renderPDBList();
+    } catch (err) {
+        toast('⚠ 삭제 실패: ' + err.message.split('\n')[0]);
+    }
 }
 
 // 진단+특약명으로 DB 검색 → 프롬프트 주입용 컨텍스트 반환

@@ -17,10 +17,15 @@ module.exports = async (req, res) => {
         const { doc_id } = JSON.parse(raw);
         if (!doc_id) return sendJSON(res, 400, { error: 'doc_id 필수' });
 
-        await supaFetch('/rest/v1/rpc/delete_precedent_doc', {
-            method: 'POST',
-            body: JSON.stringify({ target_doc_id: doc_id }),
-        });
+        // RPC(delete_precedent_doc) 대신 PostgREST 직접 DELETE 사용
+        // → RPC 함수 미생성 환경에서도 service_role 키로 동작
+        await supaFetch(
+            `/rest/v1/precedent_chunks?doc_id=eq.${encodeURIComponent(doc_id)}`,
+            {
+                method: 'DELETE',
+                headers: { 'Prefer': 'return=minimal' },
+            }
+        );
 
         sendJSON(res, 200, { ok: true });
     } catch (err) {
