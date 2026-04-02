@@ -1336,7 +1336,7 @@ const COVERAGE_CHECKLIST = [
     { id:'heart',   label:'심장 진단비',   re:/(심근경색|허혈성심장|급성심)\s*(진단)?/,   recommend:'2,000만원 이상', threshold:10000000 },
     { id:'hosp',    label:'입원일당',      re:/입원\s*일당/,                              recommend:'5만원/일 이상',  threshold:0        },
     { id:'surgery', label:'수술비',        re:/(질병|상해)?\s*수술비|종수술비|수술비\s*[IⅡ2]/,  recommend:'1,000만원 이상', threshold:5000000  },
-    { id:'lsi',     label:'실손의료보험',  re:/실(손|비)\s*(의료)?/,                      recommend:'필수 가입',      threshold:0        },
+    { id:'lsi',     label:'실손의료보험',  re:/실(손|비)\s*(의료)?|입원의료비|통원의료비|외래의료비|(질병|상해).{0,10}의료비|의료비\s*(특약|보장|담보)/,  recommend:'필수 가입',      threshold:0        },
     { id:'injury',  label:'상해후유장해',  re:/상해\s*후유\s*장해/,                       recommend:'8,000만원 이상', threshold:50000000 },
     { id:'care',    label:'간병·치매',     re:/(간병|치매|장기요양)/,                     recommend:'가입 권유',      threshold:0        },
 ];
