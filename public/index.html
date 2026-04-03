@@ -474,7 +474,11 @@
         /* ── Print ── */
         @media print {
             #passwordGate { display:none!important; }
-            .header, #analyzeBtn, #addRiderBtn, .action-bar, .rider-del, #loadingCard, #multiPdfCard { display:none!important; }
+            .header, #analyzeBtn, #addRiderBtn, .action-bar, .rider-del,
+            #loadingCard, #multiPdfCard, #inputSection,
+            .tbl-wrap, .gap-section, .analysis-grid,
+            .period-item, .script-box, .notes-list,
+            .pdb-ref-banner, .kdb-ref-banner { display:none!important; }
             body { background:white; }
             .card { box-shadow:none; border:1px solid #ccc; page-break-inside:avoid; }
             #resultsSection { display:block!important; }
@@ -2157,11 +2161,11 @@ const COVERAGE_CHECKLIST = [
     { id:'brain',
       label:'뇌혈관 진단비',
       re:/뇌(졸중|혈관|경색|출혈|혈전)/,
-      reFull:/뇌혈관\s*질환\s*(진단|특약|보장)/,
+      reFull:/뇌혈관\s*(질환|관련)?\s*(진단|특약|보장)|통합\s*형?\s*뇌혈관\s*(관련|질환)?\s*(진단|특약|보장)/,
       recommend:'뇌혈관질환진단비 1,000만원 이상', threshold:10000000 },
     { id:'heart',
       label:'심장 진단비',
-      re:/(심근경색|허혈성\s*심장)/,
+      re:/(심근경색|허혈성\s*심장|통합\s*형?\s*심장\s*관련|심장\s*관련\s*(진단|특약|보장))/,
       reFull:/허혈성\s*심장\s*질환\s*(진단|특약|보장)|통합\s*형?\s*심장\s*관련\s*(진단|특약|보장)/,
       recommend:'허혈성심장질환진단비 1,000만원 이상', threshold:10000000 },
     { id:'surgery',
@@ -2327,6 +2331,7 @@ function buildClientGapAnalysis(riders) {
                 return { ...c, status: '부족', current: `${names} (상위 특약 없음)` };
             }
             const total = fullMatched.reduce((s, r) => s + parseKorAmount(r.amount), 0);
+            if (total === 0) return { ...c, status: '적정', current: '가입(금액 미확인)' };
             if (total < c.threshold) return { ...c, status: '부족', current: fmtAmount(total) + '원' };
             return { ...c, status: '적정', current: fmtAmount(total) + '원' };
         }
@@ -2334,6 +2339,7 @@ function buildClientGapAnalysis(riders) {
         // 일반 항목
         if (!matched.length) return { ...c, status: '미가입', current: '미가입' };
         const total = matched.reduce((s, r) => s + parseKorAmount(r.amount), 0);
+        if (c.threshold > 0 && total === 0) return { ...c, status: '적정', current: '가입(금액 미확인)' };
         if (c.threshold > 0 && total < c.threshold) {
             return { ...c, status: '부족', current: fmtAmount(total) + '원' };
         }
@@ -2947,9 +2953,14 @@ async function analyze() {
     const riders = getRiders();
     if (!riders.length) { alert('특약 정보를 최소 1개 입력해주세요 (특약명 필수).'); return; }
 
-    const today    = new Date().toISOString().split('T')[0];
-    const surgText = hasSurg ? `수술 있음 / 수술명: ${document.getElementById('surgName').value.trim()||'미입력'}` : '수술 없음';
-    const hospText = hasHosp ? `입원 / 입원일수: ${document.getElementById('hospDays').value||'미입력'}일` : '외래·통원 치료';
+    const today      = new Date().toISOString().split('T')[0];
+    const surgText   = hasSurg ? `수술 있음 / 수술명: ${document.getElementById('surgName').value.trim()||'미입력'}` : '수술 없음';
+    const hospDaysVal = hasHosp ? (document.getElementById('hospDays').value || '').trim() : '';
+    const hospNoDays  = hasHosp && !hospDaysVal;  // 입원 선택했지만 일수 미입력
+    const hospText   = hasHosp
+        ? hospDaysVal ? `입원 / 입원일수: ${hospDaysVal}일`
+                      : '입원 (입원일수 미입력 — 입원일당 final_amount=0 처리)'
+        : '외래·통원 치료';
 
     const rag       = await buildRAGContext(diagnosis, riders);
     const prec      = await buildPrecedentContext(diagnosis, riders);
@@ -3018,6 +3029,49 @@ async function analyze() {
 
             // 전체 합산 금액 재계산
             result.total_estimated  = (result.rider_analysis || []).reduce((s, ra) => s + (ra.final_amount || 0), 0);
+            result.total_description = fmtAmount(result.total_estimated);
+        }
+
+        // ── 치료 유형 기반 후처리 — LLM이 놓친 경우 강제 보정 ────────
+        {
+            const DAILY_RE   = /입원\s*일당/;
+            const HOSP_RE    = /입원\s*(의료비|실손)|실손\s*입원/;
+            const OUTPAT_RE  = /통원\s*(의료비|실손)|외래\s*(의료비|진료비)|실손\s*통원/;
+            const SURG_RE    = /(질병|상해)?\s*[1-5]?\s*종?\s*수술비|(종|1종|2종|3종|4종|5종)\s*수술/;
+
+            (result.rider_analysis || []).forEach(ra => {
+                const nm = ra.rider_name || '';
+
+                if (!hasHosp) {
+                    // 외래/통원: 입원일당 및 입원의료비 해당 없음
+                    if (DAILY_RE.test(nm) || HOSP_RE.test(nm)) {
+                        ra.estimated_amount   = 0;
+                        ra.final_amount       = 0;
+                        ra.coverage_status    = '보장제한';
+                        ra.amount_description = '외래/통원 치료 (미해당)';
+                        ra.reason             = '입원하지 않아 입원급부 적용 불가';
+                    }
+                } else if (hospNoDays) {
+                    // 입원 선택 + 일수 미입력: 입원일당만 미계산 처리
+                    if (DAILY_RE.test(nm)) {
+                        ra.estimated_amount   = 0;
+                        ra.final_amount       = 0;
+                        ra.amount_description = '입원일수 미입력 (미계산)';
+                        ra.reason             = (ra.reason ? ra.reason + ' ' : '') + '[입원일수를 입력하면 금액이 계산됩니다]';
+                    }
+                }
+
+                if (!hasSurg && SURG_RE.test(nm)) {
+                    // 수술 없음: 수술비 특약 보장제한
+                    ra.estimated_amount   = 0;
+                    ra.final_amount       = 0;
+                    ra.coverage_status    = '보장제한';
+                    ra.amount_description = '수술 없음 (미해당)';
+                    ra.reason             = '수술이 없어 수술비 특약 적용 불가';
+                }
+            });
+
+            result.total_estimated   = (result.rider_analysis || []).reduce((s, ra) => s + (ra.final_amount || 0), 0);
             result.total_description = fmtAmount(result.total_estimated);
         }
 
@@ -3133,7 +3187,6 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
         <div class="disclaimer">⚖️ ${r.disclaimer||'이 분석은 참고용이며 실제 보험금 지급 여부는 보험사 최종 심사에 따라 달라질 수 있습니다.'}</div>
         <div class="action-bar">
             <button class="btn btn-primary" onclick="showPDFModal()">📄 고객 리포트 출력</button>
-            <button class="btn btn-outline" onclick="window.print()">🖨️ 인쇄</button>
             <button class="btn btn-outline" onclick="resetAll()">🔄 새 분석</button>
         </div>
     </div>`;
@@ -3393,10 +3446,14 @@ function buildCoverageReportHTML(clientName, agentName, agentPhone, currentRider
 
     // ── 섹션 2: 추천 후 달라지는 점 ────────────────────────────────
     const improvements = curGaps.map((cur, i) => ({ cur, after: afterGaps[i] })).filter(({ cur, after }) => {
-        if (cur.status === '적정' && after.status === '적정') return false; // 변화 없음
-        const a1 = cur.current   === '미가입' ? 0 : parseKorAmount(cur.current);
-        const a2 = after.current === '미가입' ? 0 : parseKorAmount(after.current);
-        return a2 > a1 || (cur.status !== '적정' && after.status === '적정');
+        // 상태가 개선됐거나 (미가입→적정, 부족→적정), 금액이 증가한 경우 표시
+        if (cur.status !== '적정' && after.status === '적정') return true;
+        if (cur.status === '부족' && after.status === '부족') {
+            const a1 = parseKorAmount(cur.current);
+            const a2 = parseKorAmount(after.current);
+            return a2 > a1;
+        }
+        return false;
     });
 
     const improvCardsHTML = improvements.map(({ cur, after }) => {
@@ -3432,13 +3489,15 @@ function buildCoverageReportHTML(clientName, agentName, agentPhone, currentRider
         productMap[key].riders.push(r);
     });
     const productCardsHTML = Object.values(productMap).map(pg => {
-        const mainRiders = pg.riders
-            .filter(r => parseKorAmount(r.amount) > 0)
-            .sort((a, b) => parseKorAmount(b.amount) - parseKorAmount(a.amount))
-            .slice(0, 10);
-        const chips = mainRiders.map(r =>
-            `<span style="display:inline-block;background:#EFF6FF;color:#1D4ED8;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;margin:3px 3px 0 0;">${r.rider} ${r.amount}</span>`
-        ).join('');
+        // 금액 있는 것 우선, 없으면(미확인) 뒤에 표시 — 둘 다 최대 10개
+        const sorted = [...pg.riders].sort((a, b) => parseKorAmount(b.amount) - parseKorAmount(a.amount)).slice(0, 10);
+        const chips = sorted.map(r => {
+            const hasAmt = parseKorAmount(r.amount) > 0;
+            const bg  = hasAmt ? '#EFF6FF' : '#F2F4F6';
+            const col = hasAmt ? '#1D4ED8' : '#8B95A1';
+            const amtTxt = hasAmt ? ` ${r.amount}` : '';
+            return `<span style="display:inline-block;background:${bg};color:${col};font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;margin:3px 3px 0 0;">${r.rider}${amtTxt}</span>`;
+        }).join('');
         return `<div style="background:#F8FAFF;border:1px solid #DBEAFE;border-radius:12px;padding:16px 18px;margin-bottom:10px;">
             <div style="margin-bottom:10px;">
                 <div style="font-size:15px;font-weight:800;color:#191F28;">${pg.product || '상품명 미확인'}</div>
@@ -3580,12 +3639,21 @@ function openPrintReport() {
     const agentPhone = document.getElementById('pdfAgentPhone').value.trim();
     hidePDFModal();
 
-    const riders    = (_lastRiders && _lastRiders.length) ? _lastRiders : getRiders();
-    const diagnosis = document.getElementById('diagnosis').value.trim();
-
+    // AI 분석 결과 없이 리포트 출력 시 → 보장 현황 리포트(buildCoverageReportHTML)로 대체
+    const hasAIResult = _lastResult && (_lastResult.rider_analysis || []).length > 0;
     const win = window.open('', '_blank');
     if (!win) { toast('⚠ 팝업이 차단되었습니다. 브라우저에서 팝업 허용 후 다시 시도하세요.'); return; }
-    win.document.write(buildPrintHTML(clientName, agentName, agentPhone, riders, _lastResult, diagnosis));
+
+    if (!hasAIResult) {
+        const currentRiders   = multiPdfState.current.flatMap(f => f.riders || []);
+        const recommendRiders = multiPdfState.recommend.flatMap(f => f.riders || []);
+        const fallbackRiders  = currentRiders.length ? currentRiders : getRiders();
+        win.document.write(buildCoverageReportHTML(clientName, agentName, agentPhone, fallbackRiders, recommendRiders));
+    } else {
+        const riders = (_lastRiders && _lastRiders.length) ? _lastRiders : getRiders();
+        const diagnosis = document.getElementById('diagnosis').value.trim();
+        win.document.write(buildPrintHTML(clientName, agentName, agentPhone, riders, _lastResult, diagnosis));
+    }
     win.document.close();
 }
 
@@ -3643,48 +3711,74 @@ function buildPrintHTML(clientName, agentName, agentPhone, riders, result, diagn
         </div>`;
     }).join('');
 
-    /* ── 보장 가능 항목 (카테고리별 합산, 특약명 노출 없음) ── */
-    const catMap = {};
+    /* ── 보장 현황 — 카테고리별 통합 1줄 요약 ── */
+    // 1) AI 결과를 카테고리로 집계
+    const aiCatMap = {};
     ras.forEach(ra => {
-        if (ra.coverage_status === '보장제한') return;
         const cat = inferRiderCategory(ra.rider_name);
-        if (!catMap[cat]) catMap[cat] = { amt: 0, status: ra.coverage_status };
-        catMap[cat].amt += ra.final_amount || 0;
-        if (ra.coverage_status === '보장가능') catMap[cat].status = '보장가능';
+        if (!aiCatMap[cat]) aiCatMap[cat] = { amt: 0, status: ra.coverage_status, reason: ra.reason || '' };
+        if (ra.coverage_status !== '보장제한') aiCatMap[cat].amt += ra.final_amount || 0;
+        // 보장가능 > 조건부보장 > 보장제한 우선순위
+        const rank = s => s === '보장가능' ? 2 : s === '조건부보장' ? 1 : 0;
+        if (rank(ra.coverage_status) > rank(aiCatMap[cat].status)) {
+            aiCatMap[cat].status = ra.coverage_status;
+            aiCatMap[cat].reason = ra.reason || '';
+        }
     });
 
-    const covRows = Object.entries(catMap)
-        .filter(([, v]) => v.amt > 0)
-        .sort((a, b) => b[1].amt - a[1].amt)
-        .map(([cat, v]) => {
-            const isCond = v.status === '조건부보장';
-            const sc = isCond ? '#F9B416' : '#00C471';
-            const sb = isCond ? '#fffbeb' : '#f0fdf4';
-            return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #F2F4F6;">
-                <div style="flex:1;font-size:14px;font-weight:700;color:#191F28;">${cat}</div>
-                <div style="font-size:20px;font-weight:800;color:#191F28;letter-spacing:-.5px;">${fmtAmount(v.amt)}<span style="font-size:13px;font-weight:500;color:#8B95A1;">원</span></div>
-                <span style="background:${sb};color:${sc};font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;">${v.status}</span>
-            </div>`;
-        }).join('');
+    // 2) 6개 핵심 카테고리 고정 순서
+    const KEY_CATS = [
+        { key: '암 진단비',   re: /암\s*(진단|특약|보장)|항암|비급여\s*암/ },
+        { key: '뇌혈관',      re: /뇌(졸중|혈관|경색|출혈|혈전)/ },
+        { key: '심장',        re: /심(근경색|장)|허혈성/ },
+        { key: '종수술비',    re: /수술비|종수술/ },
+        { key: '실손의료비',  re: /실(손|비)\s*(의료)?|입원의료비|의료비/ },
+        { key: '순환계 치료비', re: /순환계/ },
+    ];
 
-    const limitRows = ras.filter(ra => ra.coverage_status === '보장제한').map(ra => {
-        const cat = inferRiderCategory(ra.rider_name);
-        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F2F4F6;">
-            <span style="background:#fee2e2;color:#991b1b;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;">보장제한</span>
-            <span style="font-size:13px;font-weight:600;color:#191F28;">${cat}</span>
-            <span style="font-size:11px;color:#8B95A1;flex:1;">${ra.reason ? ra.reason.slice(0,60) : ''}</span>
+    // 3) AI 결과 카테고리에서 핵심 6개에 매칭
+    const catSummaryRows = KEY_CATS.map(({ key, re }) => {
+        // AI catMap에서 매칭
+        const matched = Object.entries(aiCatMap).find(([cat]) => re.test(cat));
+        let icon, color, desc;
+        if (!matched) {
+            // AI 분석에 등장하지 않음 → 해당 없음
+            return '';
+        }
+        const { amt, status, reason } = matched[1];
+        if (status === '보장가능') {
+            icon = '✅'; color = '#166534';
+            desc = amt > 0 ? `${fmtAmount(amt)}원 보장` : reason.slice(0, 50) || '보장 가능';
+        } else if (status === '조건부보장') {
+            icon = '⚠️'; color = '#92400E';
+            desc = reason.slice(0, 50) || '조건부 보장';
+        } else {
+            icon = '❌'; color = '#991B1B';
+            desc = reason.slice(0, 50) || '보장 제한';
+        }
+        return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #F2F4F6;">
+            <span style="font-size:15px;flex-shrink:0;line-height:1.4;">${icon}</span>
+            <span style="font-size:13px;font-weight:700;color:#191F28;min-width:72px;">${key}</span>
+            <span style="font-size:12px;color:${color};flex:1;line-height:1.5;">${desc}</span>
+            ${amt > 0 ? `<span style="font-size:13px;font-weight:800;color:#191F28;white-space:nowrap;">${fmtAmount(amt)}<span style="font-size:10px;font-weight:400;color:#8B95A1;">원</span></span>` : ''}
         </div>`;
-    }).join('');
+    }).filter(Boolean).join('');
 
-    /* ── 보완 필요 ── */
-    const gapItems = gapData.filter(g => g.status !== '적정');
-    const gapRows  = gapItems.map(g => {
-        const bb = g.status==='미가입'?'#fee2e2':'#fef3c7';
-        const bc = g.status==='미가입'?'#991b1b':'#92400e';
-        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #F2F4F6;">
-            <span style="background:${bb};color:${bc};font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;">${g.status}</span>
-            <b style="font-size:13px;color:#191F28;">${g.label}</b>
-            <span style="font-size:12px;color:#8B95A1;flex:1;">권장 ${g.recommend}${g.current&&g.current!=='미가입'?' · 현재 '+g.current:''}</span>
+    /* ── 현재 보장 요약 그리드 ── */
+    const statusGridHTML = gapData.map(g => {
+        const isBad  = g.status === '미가입';
+        const isWarn = g.status === '부족';
+        const bg     = isBad ? '#FFF9F9' : isWarn ? '#FFFBEB' : '#F0FDF4';
+        const border = isBad ? '#FECACA' : isWarn ? '#FDE68A' : '#BBF7D0';
+        const tc     = isBad ? '#991B1B' : isWarn ? '#92400E' : '#166534';
+        const icon   = isBad ? '❌' : isWarn ? '⚠️' : '✅';
+        const sub    = g.status === '적정' ? (g.current || g.recommend)
+                     : (g.current && g.current !== '미가입') ? g.current
+                     : `권장 ${g.recommend}`;
+        return `<div style="background:${bg};border:1.5px solid ${border};border-radius:10px;padding:10px 8px;text-align:center;">
+            <div style="font-size:18px;margin-bottom:3px;">${icon}</div>
+            <div style="font-size:11px;font-weight:700;color:#191F28;margin-bottom:3px;">${g.label}</div>
+            <div style="font-size:10px;color:${tc};font-weight:600;line-height:1.4;">${sub}</div>
         </div>`;
     }).join('');
 
@@ -3750,26 +3844,24 @@ body{font-family:'Pretendard',-apple-system,sans-serif;color:#191F28;background:
     <div style="flex:1;">${scoreBars}</div>
 </div>
 
-<!-- 보장 가능 항목 -->
-${covRows ? `<div style="margin-bottom:16px;">
-    <div style="font-size:13px;font-weight:800;color:#191F28;padding-bottom:8px;border-bottom:2px solid #F2F4F6;margin-bottom:2px;">✅ 보장 가능 항목</div>
-    ${covRows}
-    ${totalAmt?`<div style="display:flex;justify-content:flex-end;align-items:baseline;gap:6px;padding:12px 0 0;"><span style="font-size:12px;color:#8B95A1;">예상 총 보험금</span><span style="font-size:22px;font-weight:800;color:#3182F6;">${fmtAmount(totalAmt)}</span><span style="font-size:13px;color:#3182F6;font-weight:600;">원</span></div>`:''}
-</div>` : ''}
+<!-- 보장 현황 요약 -->
+<div style="margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:800;color:#191F28;padding-bottom:8px;border-bottom:2px solid #F2F4F6;margin-bottom:4px;">📋 핵심 보장 현황</div>
+    ${catSummaryRows || '<div style="font-size:12px;color:#8B95A1;padding:8px 0;">분석 결과 없음</div>'}
+    ${totalAmt ? `<div style="display:flex;justify-content:flex-end;align-items:baseline;gap:6px;padding:12px 0 0;">
+        <span style="font-size:12px;color:#8B95A1;">이번 진단 예상 보험금</span>
+        <span style="font-size:22px;font-weight:800;color:#3182F6;">${fmtAmount(totalAmt)}</span>
+        <span style="font-size:13px;color:#3182F6;font-weight:600;">원</span>
+    </div>` : ''}
+</div>
 
-<!-- 보장 제한 항목 -->
-${limitRows ? `<div style="margin-bottom:16px;">
-    <div style="font-size:13px;font-weight:800;color:#191F28;padding-bottom:8px;border-bottom:2px solid #F2F4F6;margin-bottom:2px;">🚫 보장 제한 항목</div>
-    ${limitRows}
-</div>` : ''}
-
-<!-- 보완 필요 항목 -->
-${gapRows ? `<div style="background:#FFF9F9;border:1px solid #FECACA;border-radius:12px;padding:14px 16px;margin-bottom:16px;">
-    <div style="font-size:13px;font-weight:800;color:#991B1B;margin-bottom:10px;">⚠️ 보완 필요 항목</div>
-    ${gapRows}
-</div>` : `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:14px 16px;margin-bottom:16px;text-align:center;">
-    <div style="font-size:13px;font-weight:700;color:#166534;">✅ 주요 보장 항목 모두 적정 수준 가입 확인</div>
-</div>`}
+<!-- 현재 보장 요약 -->
+<div style="margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:800;color:#191F28;margin-bottom:10px;">📋 현재 보장 요약</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+        ${statusGridHTML}
+    </div>
+</div>
 
 <!-- 고객 멘트 -->
 ${result?.customer_script ? `<div style="background:#EBF3FF;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:12px;line-height:1.9;color:#1B6ADB;">${result.customer_script}</div>` : ''}
