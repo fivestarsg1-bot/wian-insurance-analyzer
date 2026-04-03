@@ -1716,6 +1716,8 @@ async function handleMultiPdfAdd(type, file) {
             }
         }
 
+        // 각 rider에 출처 태그 추가 (기존보장 / 추천상품)
+        riders = riders.map(r => ({ ...r, _source: type }));
         multiPdfState[type][idx] = { name: file.name, loading: false, error: null, riders, isImg };
         toast(`✓ "${file.name}" — ${riders.length}개 특약 추출 완료`);
     } catch (err) {
@@ -1732,6 +1734,20 @@ function runMultiPdfAnalysis() {
     const combinedRiders  = [...currentRiders, ...recommendRiders];
 
     if (!currentRiders.length) { toast('기존 보장 PDF에서 특약을 먼저 추출해주세요.'); return; }
+
+    // ── 디버그: 특약 소스별 추출 현황 콘솔 출력 ─────────────────
+    console.group('%c[합산 분석] 특약 소스별 현황', 'color:#3182F6;font-weight:bold;');
+    console.log(`%c[기존 보장] ${currentRiders.length}개`, 'color:#166534;font-weight:bold;');
+    console.table(currentRiders.map(r => ({ 보험사: r.insurer||'?', 상품명: r.product||'?', 특약명: r.rider, 금액: r.amount, 가입일: r.startDate||'-' })));
+    if (recommendRiders.length) {
+        console.log(`%c[추천 상품] ${recommendRiders.length}개`, 'color:#1D4ED8;font-weight:bold;');
+        console.table(recommendRiders.map(r => ({ 보험사: r.insurer||'?', 상품명: r.product||'?', 특약명: r.rider, 금액: r.amount, 가입일: r.startDate||'-' })));
+    } else {
+        console.log('%c[추천 상품] 없음', 'color:#8B95A1;');
+    }
+    console.log(`%c[합계] ${combinedRiders.length}개`, 'color:#191F28;font-weight:bold;');
+    console.groupEnd();
+    // ────────────────────────────────────────────────────────────
 
     // 폼에 기존 보장 + 추천 상품 합산 반영 (체크리스트·AI 분석에 모두 포함)
     clearAllRiders();
@@ -2304,10 +2320,22 @@ function buildClientGapAnalysis(riders) {
 
         // ── 종수술비: 특정 질병 접두어 제외 + 최고 금액 1개 ──
         if (c.id === 'surgery') {
-            const amt = _surgeryMaxAmount(riders);
+            const curRiders = riders.filter(r => r._source === 'current' || !r._source);
+            const recRiders = riders.filter(r => r._source === 'recommend');
+            const curAmt    = _surgeryMaxAmount(curRiders);
+            const recAmt    = _surgeryMaxAmount(recRiders);
+            const amt       = _surgeryMaxAmount(riders);
+
+            let breakdown = '';
+            if (curAmt > 0 && recAmt > 0) {
+                breakdown = ` (기존 ${fmtAmount(curAmt)}원 / 추천 ${fmtAmount(recAmt)}원)`;
+            } else if (recAmt > 0 && curAmt === 0) {
+                breakdown = ' (추천 상품)';
+            }
+
             if (amt === 0) return { ...c, status: '미가입', current: '미가입' };
-            if (amt < c.threshold) return { ...c, status: '부족', current: fmtAmount(amt) + '원' };
-            return { ...c, status: '적정', current: fmtAmount(amt) + '원' };
+            if (amt < c.threshold) return { ...c, status: '부족', current: fmtAmount(amt) + '원' + breakdown };
+            return { ...c, status: '적정', current: fmtAmount(amt) + '원' + breakdown };
         }
 
         // ── 실손: 질병입원 실손만 ──
@@ -3091,9 +3119,10 @@ async function analyze() {
 
 // 특약 목록 → 프롬프트 텍스트
 function makeRiderLines(batch) {
-    return batch.map(r =>
-        `  [특약${r.idx}] 보험사: ${r.insurer||'미입력'} | 상품: ${r.product||'미입력'} | 특약명: ${r.rider} | 가입금액: ${r.amount||'미입력'} | 가입일: ${fmtDate(r.startDate)} | ${fmtElapsed(daysSince(r.startDate))}`
-    ).join('\n');
+    return batch.map(r => {
+        const srcTag = r._source === 'recommend' ? ' | [추천상품]' : r._source === 'current' ? ' | [기존보장]' : '';
+        return `  [특약${r.idx}] 보험사: ${r.insurer||'미입력'} | 상품: ${r.product||'미입력'} | 특약명: ${r.rider} | 가입금액: ${r.amount||'미입력'} | 가입일: ${fmtDate(r.startDate)} | ${fmtElapsed(daysSince(r.startDate))}${srcTag}`;
+    }).join('\n');
 }
 
 // 1차 호출용 시스템 프롬프트 (전체 JSON 스키마)
@@ -3150,7 +3179,12 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
     const tblRows=ras.map((ra,i)=>{
         const sc=ra.coverage_status==='보장가능'?'s-ok':ra.coverage_status==='조건부보장'?'s-cond':'s-lim';
         const orig=riderData[i]||{};
-        return `<tr><td><div style="font-weight:600;">${ra.rider_name}</div><div style="font-size:11px;color:#94a3b8;">${[orig.insurer,orig.product].filter(Boolean).join(' / ')}</div></td><td><span class="status-badge ${sc}">${ra.coverage_status}</span></td><td><div class="amt">${ra.amount_description||fmtAmount(ra.final_amount)}</div>${ra.reduction_rate>0?`<div class="amt-note">감액 ${Math.round(ra.reduction_rate*100)}% 적용</div>`:''}</td><td class="rider-reason">${ra.reason||''}</td></tr>`;
+        const srcBadge = orig._source==='recommend'
+            ? '<span style="font-size:9px;background:#DBEAFE;color:#1D4ED8;padding:1px 6px;border-radius:10px;font-weight:700;margin-left:5px;vertical-align:middle;">추천</span>'
+            : orig._source==='current'
+            ? '<span style="font-size:9px;background:#DCFCE7;color:#166534;padding:1px 6px;border-radius:10px;font-weight:700;margin-left:5px;vertical-align:middle;">기존</span>'
+            : '';
+        return `<tr><td><div style="font-weight:600;">${ra.rider_name}${srcBadge}</div><div style="font-size:11px;color:#94a3b8;">${[orig.insurer,orig.product].filter(Boolean).join(' / ')}</div></td><td><span class="status-badge ${sc}">${ra.coverage_status}</span></td><td><div class="amt">${ra.amount_description||fmtAmount(ra.final_amount)}</div>${ra.reduction_rate>0?`<div class="amt-note">감액 ${Math.round(ra.reduction_rate*100)}% 적용</div>`:''}</td><td class="rider-reason">${ra.reason||''}</td></tr>`;
     }).join('');
     const noteItems=(r.important_notes||[]).map(n=>`<li>${n}</li>`).join('');
     const ragBanner  = ragRefs.length
