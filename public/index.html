@@ -2210,8 +2210,8 @@ const COVERAGE_CHECKLIST = [
       recommend:'뇌혈관질환진단비 1,000만원 이상', threshold:10000000 },
     { id:'heart',
       label:'심장 진단비',
-      re:/(심근경색|허혈성\s*심장|통합\s*형?\s*심장\s*관련|심장\s*관련\s*(진단|특약|보장)|6대\s*심장\s*질환|심장\s*질환\s*(진단|특약)|심장판막|부정맥)/,
-      reFull:/허혈성\s*심장\s*질환\s*(진단|특약|보장)|통합\s*형?\s*심장\s*관련\s*(진단|특약|보장)|6대\s*심장\s*질환\s*(진단|특약|보장)|심장\s*질환\s*(진단비|진단|특약|보장)/,
+      re:/(심근경색|허혈성\s*심장|통합\s*형?\s*심장\s*관련|심장\s*관련\s*(진단|특약|보장)|6대\s*심장\s*질환|심장\s*질환\s*(진단|특약)|심장판막|부정맥|심근병증|심부전)/,
+      reFull:/허혈성\s*심장\s*질환\s*(진단|특약|보장)|통합\s*형?\s*심장\s*관련\s*(진단|특약|보장)|6대\s*심장\s*질환\s*(진단|특약|보장)|심장\s*질환\s*(진단비|진단|특약|보장)|심근병증\s*(진단|특약|보장)|심부전\s*(진단|특약|보장)|부정맥\s*(진단|특약|보장)|심장판막\s*(진단|특약|보장)/,
       recommend:'허혈성심장질환진단비 1,000만원 이상', threshold:10000000 },
     { id:'surgery',
       label:'종수술비',
@@ -2336,7 +2336,7 @@ function _logRiderBuckets(riders) {
     const BUCKETS = [
         { id: '암진단비',    re: /암\s*(진단|특약|보장)/ },
         { id: '뇌혈관진단비', re: /뇌(졸중|혈관|경색|출혈|혈전)|뇌혈관\s*(Ⅱ|Ⅲ|II|III)/ },
-        { id: '심장진단비',  re: /(심근경색|허혈성\s*심장|6대\s*심장\s*질환|심장\s*질환\s*(진단|특약)|심장판막|부정맥)/ },
+        { id: '심장진단비',  re: /(심근경색|허혈성\s*심장|6대\s*심장\s*질환|심장\s*질환\s*(진단|특약)|심장판막|부정맥|심근병증|심부전)/ },
         { id: '종수술비(후보)', re: _SURG_POS_RE, excl: _SURG_EXCL_RE },
         { id: '실손(후보)',  re: _LSI_DISEASE_RE },
         { id: '입원일당',   re: /입원\s*일당/ },
@@ -2377,7 +2377,7 @@ async function classifyUnmatchedRidersWithClaude(riders) {
     const bucketDesc = [
         'cancer: 암진단비 관련 (암진단, 암특약 등)',
         'brain: 뇌혈관 진단비 (뇌졸중, 뇌혈관질환, 뇌경색, 뇌혈관Ⅱ 등)',
-        'heart: 심장 진단비 (허혈성심장, 심근경색, 6대심장질환, 심장판막, 부정맥 등)',
+        'heart: 심장 진단비 (허혈성심장, 심근경색, 6대심장질환, 심장판막, 부정맥, 심근병증, 심부전 등)',
         'surgery: 종수술비 (질병종수술비, 상해종수술비, 수술비Ⅱ 등)',
         'lsi: 실손의료보험 (실손, 의료비, 입원의료비 등)',
         'noncancer: 비급여암치료비 (항암약물, 표적항암, 암통합치료비 등)',
@@ -2592,7 +2592,7 @@ async function extractCoveragesWithClaude(text, pages = 10, hint = '') {
 담보 category 분류 기준 (아래 목록 중 정확히 하나 선택):
 - "암진단비": 암·악성종양·상피내암 진단비
 - "뇌혈관진단비": 뇌졸중·뇌혈관질환·뇌경색·뇌혈관Ⅱ 진단비
-- "심장진단비": 허혈성심장질환·심근경색·6대심장질환·심장판막·부정맥 진단비
+- "심장진단비": 허혈성심장질환·급성심근경색·6대심장질환·심장판막질환·부정맥·심근병증·심부전 등 심장 관련 질환 진단비를 보장하는 모든 담보
 - "질병종수술비": 질병종수술비·질병1~5종수술비·(건강가입)질병종수술·수술비Ⅱ 등 질병으로 인한 종수술 모두
 - "질병수술비": 종수술 외 일반 질병수술비
 - "실손": 실손의료보험·입원의료비·통원의료비
@@ -3200,6 +3200,55 @@ async function analyze() {
                 }
             });
 
+            // ── 진단비 카테고리 × 진단명 cross-check ─────────────────────
+            // LLM이 잘못 보장가능으로 판정한 진단비를 프로그래밍적으로 보정
+            {
+                const diseaseFull = [
+                    result.kcd_analysis?.disease_category || '',
+                    result.kcd_analysis?.description      || '',
+                    ...(result.kcd_analysis?.estimated_codes || []),
+                ].join(' ');
+
+                // 진단 유형 플래그
+                const isMalignantCancer = /암|악성|악성종양|C[0-9]/.test(diseaseFull);
+                const isSimilarCancer   = /갑상선\s*암|상피내암|유사\s*암|경계성|D0[0-9]/.test(diseaseFull);
+                const isBrainVascular   = /뇌졸중|뇌혈관|뇌경색|뇌출혈|I6[0-9]/.test(diseaseFull);
+                const isHeartDisease    = /심근경색|허혈성\s*심장|심부전|부정맥|심장판막|심근병증|I[2-5][0-9]/.test(diseaseFull);
+
+                // 진단비 종류별 → 해당 진단이 아니면 강제 보장제한
+                const DIAG_GATE = {
+                    '암진단비':       isMalignantCancer || isSimilarCancer,
+                    '뇌혈관진단비':   isBrainVascular,
+                    '심장진단비':     isHeartDisease,
+                };
+                // 이름 패턴 fallback (category 없는 경우 대비)
+                const CANCER_NM_RE  = /암\s*진단|유사\s*암|고액\s*암|상피내암/;
+                const BRAIN_NM_RE   = /뇌(졸중|혈관|경색|출혈)\s*(진단|특약)/;
+                const HEART_NM_RE   = /(심근경색|허혈성\s*심장|부정맥|심장판막|심근병증|심부전|6대\s*심장)\s*(진단|특약)/;
+
+                (result.rider_analysis || []).forEach(ra => {
+                    if (ra.coverage_status === '보장제한') return; // 이미 제한
+                    const cat = ra.category || '';
+                    const nm2 = ra.rider_name || '';
+
+                    const isCancerRider = cat === '암진단비' || CANCER_NM_RE.test(nm2);
+                    const isBrainRider  = cat === '뇌혈관진단비' || BRAIN_NM_RE.test(nm2);
+                    const isHeartRider  = cat === '심장진단비' || HEART_NM_RE.test(nm2);
+
+                    const block =
+                        (isCancerRider && !isMalignantCancer && !isSimilarCancer) ||
+                        (isBrainRider  && !isBrainVascular) ||
+                        (isHeartRider  && !isHeartDisease);
+
+                    if (!block) return;
+                    ra.estimated_amount   = 0;
+                    ra.final_amount       = 0;
+                    ra.coverage_status    = '보장제한';
+                    ra.amount_description = '진단명 미해당 (해당 진단 시에만 지급)';
+                    ra.reason             = `${result.kcd_analysis?.disease_category || '현재 진단'}에 해당하지 않는 진단비 특약`;
+                });
+            }
+
             (result.rider_analysis || []).forEach(ra => {
                 const nm = ra.rider_name || '';
 
@@ -3477,7 +3526,7 @@ function calcCoverageScore(riders) {
 
     // 심장 — 허혈성심장질환진단비 없으면 0점 (권장 1,000만원)
     const heartFull = riders.filter(r =>
-        /허혈성\s*심장\s*질환\s*(진단|특약|보장)|통합\s*형?\s*심장\s*관련\s*(진단|특약|보장)|6대\s*심장\s*질환\s*(진단|특약|보장)|심장\s*질환\s*(진단비|진단|특약|보장)/.test(nm(r)) || r._bucket === 'heart'
+        /허혈성\s*심장\s*질환\s*(진단|특약|보장)|통합\s*형?\s*심장\s*관련\s*(진단|특약|보장)|6대\s*심장\s*질환\s*(진단|특약|보장)|심장\s*질환\s*(진단비|진단|특약|보장)|심근병증\s*(진단|특약|보장)|심부전\s*(진단|특약|보장)|부정맥\s*(진단|특약|보장)|심장판막\s*(진단|특약|보장)/.test(nm(r)) || r._bucket === 'heart'
     );
     const heartScore = heartFull.length
         ? pct(heartFull.reduce((s, r) => s + parseKorAmount(r.amount), 0), 10000000)
@@ -3927,7 +3976,7 @@ function openPrintReport() {
 function inferRiderCategory(name) {
     if (/암\s*(진단|특약|보장)/.test(name)) return '암 진단비';
     if (/뇌(졸중|혈관|경색|출혈)|뇌혈관\s*질환/.test(name)) return '뇌혈관 진단비';
-    if (/심근경색|허혈성\s*심장|6대\s*심장\s*질환|심장\s*질환\s*(진단|특약)|심장판막|부정맥/.test(name)) return '심장 진단비';
+    if (/심근경색|허혈성\s*심장|6대\s*심장\s*질환|심장\s*질환\s*(진단|특약)|심장판막|부정맥|심근병증|심부전/.test(name)) return '심장 진단비';
     if (/종\s*수술비|수술비\s*(II|Ⅱ|2)|(질병|상해)\s*종/.test(name)) return '종수술비';
     if (/(질병|상해|특정)?\s*수술비/.test(name)) return '수술비';
     if (/암\s*(입원|통원)/.test(name)) return '암 입원일당';
