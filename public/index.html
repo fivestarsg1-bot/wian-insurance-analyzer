@@ -1756,7 +1756,7 @@ async function handleMultiPdfAdd(type, file) {
     mpdfRenderList(type === 'current' ? 'recommend' : 'current');
 }
 
-function runMultiPdfAnalysis() {
+async function runMultiPdfAnalysis() {
     const currentRiders   = multiPdfState.current.flatMap(f => f.riders || []);
     const recommendRiders = multiPdfState.recommend.flatMap(f => f.riders || []);
     const combinedRiders  = [...currentRiders, ...recommendRiders];
