@@ -920,16 +920,10 @@ function getToken() { return sessionStorage.getItem('access_token') || ''; }
 async function checkAuth() {
     const token = getToken();
     if (token) { showApp(); return; }
-
-    // 비밀번호 필요 여부 먼저 확인 — SITE_PASSWORD 미설정 시 게이트 생략
-    try {
-        const cfg = await fetch('/api/auth').then(r => r.json());
-        if (!cfg.passwordRequired) {
-            const ok = await tryLogin('');
-            if (ok) { showApp(); return; }
-        }
-    } catch { /* 네트워크 오류 시 게이트 표시로 폴백 */ }
-
+    // SITE_PASSWORD 미설정 시 빈 비밀번호로 자동 로그인 → 게이트 생략
+    // 실패 시(비밀번호 설정됨)만 게이트 표시
+    const ok = await tryLogin('');
+    if (ok) { showApp(); return; }
     showGate();
 }
 
