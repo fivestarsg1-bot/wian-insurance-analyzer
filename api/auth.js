@@ -13,6 +13,11 @@ module.exports = async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'no-store');
 
+    // GET: 비밀번호 설정 여부만 반환 (게이트 표시 여부 결정용)
+    if (req.method === 'GET') {
+        return res.status(200).json({ passwordRequired: !!process.env.SITE_PASSWORD });
+    }
+
     if (req.method !== 'POST') {
         return res.status(405).end();
     }

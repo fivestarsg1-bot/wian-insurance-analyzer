@@ -514,7 +514,7 @@
 <body>
 
 <!-- ══ Password Gate ═══════════════════════════════════════ -->
-<div id="passwordGate" style="display:flex;">
+<div id="passwordGate" style="display:none;">
     <div class="gate-card fade-in">
         <div class="gate-logo">🛡️</div>
         <div class="gate-title">내 손안의 손해사정사</div>
@@ -527,7 +527,6 @@
         </div>
         <button class="gate-btn" id="loginBtn" onclick="login()">입 장</button>
         <div class="gate-error" id="pwError"></div>
-        <div style="margin-top:20px;font-size:11px;color:#94a3b8;">비밀번호가 없는 경우 빈칸으로 입장하세요</div>
     </div>
 </div>
 
@@ -921,10 +920,17 @@ function getToken() { return sessionStorage.getItem('access_token') || ''; }
 async function checkAuth() {
     const token = getToken();
     if (token) { showApp(); return; }
-    // SITE_PASSWORD 미설정 시 빈 비밀번호로 자동 로그인 시도
-    const ok = await tryLogin('');
-    if (ok) showApp();
-    else     showGate();
+
+    // 비밀번호 필요 여부 먼저 확인 — SITE_PASSWORD 미설정 시 게이트 생략
+    try {
+        const cfg = await fetch('/api/auth').then(r => r.json());
+        if (!cfg.passwordRequired) {
+            const ok = await tryLogin('');
+            if (ok) { showApp(); return; }
+        }
+    } catch { /* 네트워크 오류 시 게이트 표시로 폴백 */ }
+
+    showGate();
 }
 
 async function tryLogin(password) {
