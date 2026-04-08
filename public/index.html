@@ -701,15 +701,6 @@
             </select>
             <p style="font-size:11px;color:var(--muted);margin-top:6px;">모델은 이 브라우저에만 저장됩니다.</p>
         </div>
-        <div class="form-group" style="margin-top:14px;">
-            <label class="form-label">Supabase URL</label>
-            <input class="form-control" id="sbUrlInput" type="text" placeholder="https://xxxx.supabase.co">
-        </div>
-        <div class="form-group" style="margin-top:10px;">
-            <label class="form-label">Supabase Anon Key</label>
-            <input class="form-control" id="sbKeyInput" type="password" placeholder="eyJhbGciOi...">
-            <p style="font-size:11px;color:var(--muted);margin-top:6px;">고객 DB 연동에 사용됩니다. 이 브라우저에만 저장됩니다.</p>
-        </div>
         <div class="modal-footer">
             <button class="btn btn-outline btn-sm" onclick="closeSettings()">닫기</button>
             <button class="btn btn-primary btn-sm" onclick="saveSettings()">저장</button>
@@ -2051,17 +2042,11 @@ function togglePwVis() {
 // ════════════════════════════════════════════════════════════
 function openSettings() {
     document.getElementById('modelSelect').value = localStorage.getItem('ai_model') || 'claude-sonnet-4-6';
-    document.getElementById('sbUrlInput').value  = localStorage.getItem('supabase_url') || '';
-    document.getElementById('sbKeyInput').value  = localStorage.getItem('supabase_anon_key') || '';
     document.getElementById('settingsModal').classList.add('show');
 }
 function closeSettings() { document.getElementById('settingsModal').classList.remove('show'); }
 function saveSettings() {
     localStorage.setItem('ai_model', document.getElementById('modelSelect').value);
-    const sbUrl = document.getElementById('sbUrlInput').value.trim();
-    const sbKey = document.getElementById('sbKeyInput').value.trim();
-    if (sbUrl) localStorage.setItem('supabase_url', sbUrl);
-    if (sbKey) localStorage.setItem('supabase_anon_key', sbKey);
     closeSettings(); toast('설정이 저장되었습니다.');
 }
 document.getElementById('settingsModal').addEventListener('click', e => {
@@ -5301,26 +5286,17 @@ function init() {
 init();
 
 // ════════════════════════════════════════════════════════════
-// 고객 DB — Supabase REST 직접 호출 헬퍼
+// 고객 DB — /api/db 프록시 헬퍼
 // ════════════════════════════════════════════════════════════
-function getSbConfig() {
-    return {
-        url: localStorage.getItem('supabase_url') || '',
-        key: localStorage.getItem('supabase_anon_key') || '',
-    };
-}
 
-async function sbFetch(url, opts = {}) {
-    const { key } = getSbConfig();
-    const res = await fetch(url, {
-        ...opts,
-        headers: {
-            'apikey': key,
-            'Authorization': `Bearer ${key}`,
-            'Content-Type': 'application/json',
-            ...(opts.headers || {}),
-        },
-    });
+// /api/db 프록시 저수준 호출
+async function dbProxy(method, table, { id, filter, body } = {}) {
+    let url = `/api/db?table=${encodeURIComponent(table)}`;
+    if (id)     url += `&id=${encodeURIComponent(id)}`;
+    if (filter) url += `&filter=${encodeURIComponent(filter)}`;
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
     if (res.status === 204) return null;
     const text = await res.text();
     if (!text) return null;
@@ -5329,16 +5305,11 @@ async function sbFetch(url, opts = {}) {
     return data;
 }
 
-// 기존 /api/* URL 패턴을 Supabase REST로 라우팅
+// 기존 /api/* URL 패턴 → /api/db 프록시 라우팅 (호출부 코드 변경 불필요)
 async function dbFetch(pseudoUrl, options = {}) {
     const { method = 'GET', body } = options;
-    const { url: sbUrl, key: sbKey } = getSbConfig();
-    if (!sbUrl || !sbKey) {
-        throw new Error('Supabase 설정이 필요합니다. ⚙️ 설정에서 URL과 Anon Key를 입력해주세요.');
-    }
-
-    const u  = new URL(pseudoUrl, 'http://x');
-    const path = u.pathname;
+    const u          = new URL(pseudoUrl, 'http://x');
+    const path       = u.pathname;
     const id         = u.searchParams.get('id');
     const customerId = u.searchParams.get('customer_id');
     const q          = u.searchParams.get('q');
@@ -5347,35 +5318,31 @@ async function dbFetch(pseudoUrl, options = {}) {
     if (path === '/api/customers') {
         if (method === 'GET') {
             if (id) {
-                const rows = await sbFetch(`${sbUrl}/rest/v1/customers?id=eq.${id}&select=*`);
-                return rows?.[0] || null;
+                const rows = await dbProxy('GET', 'customers', { id });
+                return Array.isArray(rows) ? rows[0] || null : rows;
             }
-            let endpoint = `${sbUrl}/rest/v1/customers?select=*,insurance_contracts(id),claim_history(claim_date)&order=updated_at.desc`;
-            if (q) endpoint += `&or=(name.ilike.*${encodeURIComponent(q)}*,phone.ilike.*${encodeURIComponent(q)}*)`;
-            const rows = await sbFetch(endpoint);
-            return (rows || []).map(c => ({
+            let filter = 'select=*,insurance_contracts(id),claim_history(claim_date)&order=updated_at.desc';
+            if (q) filter += `&or=(name.ilike.*${q}*,phone.ilike.*${q}*)`;
+            const rows = await dbProxy('GET', 'customers', { filter }) || [];
+            return rows.map(c => ({
                 ...c,
                 contract_count:  (c.insurance_contracts || []).length,
                 last_claim_date: (c.claim_history || []).sort((a, b) =>
                     (b.claim_date || '').localeCompare(a.claim_date || ''))[0]?.claim_date || null,
                 insurance_contracts: undefined,
-                claim_history: undefined,
+                claim_history:       undefined,
             }));
         }
         if (method === 'POST') {
-            const rows = await sbFetch(`${sbUrl}/rest/v1/customers`, {
-                method: 'POST', body: JSON.stringify(body), headers: { 'Prefer': 'return=representation' },
-            });
+            const rows = await dbProxy('POST', 'customers', { body });
             return Array.isArray(rows) ? rows[0] : rows;
         }
         if (method === 'PUT' || method === 'PATCH') {
-            const rows = await sbFetch(`${sbUrl}/rest/v1/customers?id=eq.${id}`, {
-                method: 'PATCH', body: JSON.stringify(body), headers: { 'Prefer': 'return=representation' },
-            });
+            const rows = await dbProxy('PATCH', 'customers', { id, body });
             return Array.isArray(rows) ? rows[0] : rows;
         }
         if (method === 'DELETE') {
-            await sbFetch(`${sbUrl}/rest/v1/customers?id=eq.${id}`, { method: 'DELETE' });
+            await dbProxy('DELETE', 'customers', { id });
             return null;
         }
     }
@@ -5384,44 +5351,38 @@ async function dbFetch(pseudoUrl, options = {}) {
     if (path === '/api/contracts') {
         if (method === 'GET') {
             if (customerId) {
-                const rows = await sbFetch(`${sbUrl}/rest/v1/insurance_contracts?customer_id=eq.${customerId}&select=*,coverage_details(*)&order=contract_date.desc`);
-                return (rows || []).map(r => ({ ...r, coverage: r.coverage_details || [], coverage_details: undefined }));
+                const rows = await dbProxy('GET', 'insurance_contracts', {
+                    filter: `customer_id=eq.${customerId}&select=*,coverage_details(*)&order=contract_date.desc`,
+                }) || [];
+                return rows.map(r => ({ ...r, coverage: r.coverage_details || [], coverage_details: undefined }));
             }
             if (id) {
-                const rows = await sbFetch(`${sbUrl}/rest/v1/insurance_contracts?id=eq.${id}&select=*`);
-                return rows?.[0] || null;
+                const rows = await dbProxy('GET', 'insurance_contracts', { id });
+                return Array.isArray(rows) ? rows[0] || null : rows;
             }
         }
         if (method === 'POST') {
             if (body?._type === 'coverage') {
                 const { _type, ...data } = body;
-                const rows = await sbFetch(`${sbUrl}/rest/v1/coverage_details`, {
-                    method: 'POST', body: JSON.stringify(data), headers: { 'Prefer': 'return=representation' },
-                });
+                const rows = await dbProxy('POST', 'coverage_details', { body: data });
                 return Array.isArray(rows) ? rows[0] : rows;
             }
             const { coverage, ...contractData } = body;
-            const rows = await sbFetch(`${sbUrl}/rest/v1/insurance_contracts`, {
-                method: 'POST', body: JSON.stringify(contractData), headers: { 'Prefer': 'return=representation' },
-            });
+            const rows = await dbProxy('POST', 'insurance_contracts', { body: contractData });
             const contract = Array.isArray(rows) ? rows[0] : rows;
             if (coverage?.length && contract?.id) {
                 const covRows = coverage.map(c => ({ ...c, contract_id: contract.id }));
-                await sbFetch(`${sbUrl}/rest/v1/coverage_details`, {
-                    method: 'POST', body: JSON.stringify(covRows), headers: { 'Prefer': 'return=minimal' },
-                });
+                await dbProxy('POST', 'coverage_details', { body: covRows });
             }
             return contract;
         }
         if (method === 'PUT' || method === 'PATCH') {
             const { coverage, _type, ...data } = body || {};
-            const rows = await sbFetch(`${sbUrl}/rest/v1/insurance_contracts?id=eq.${id}`, {
-                method: 'PATCH', body: JSON.stringify(data), headers: { 'Prefer': 'return=representation' },
-            });
+            const rows = await dbProxy('PATCH', 'insurance_contracts', { id, body: data });
             return Array.isArray(rows) ? rows[0] : rows;
         }
         if (method === 'DELETE') {
-            await sbFetch(`${sbUrl}/rest/v1/insurance_contracts?id=eq.${id}`, { method: 'DELETE' });
+            await dbProxy('DELETE', 'insurance_contracts', { id });
             return null;
         }
     }
@@ -5430,21 +5391,21 @@ async function dbFetch(pseudoUrl, options = {}) {
     if (path === '/api/claims') {
         if (method === 'GET') {
             if (customerId) {
-                return await sbFetch(`${sbUrl}/rest/v1/claim_history?customer_id=eq.${customerId}&order=claim_date.desc`) || [];
+                return await dbProxy('GET', 'claim_history', {
+                    filter: `customer_id=eq.${customerId}&order=claim_date.desc`,
+                }) || [];
             }
             if (id) {
-                const rows = await sbFetch(`${sbUrl}/rest/v1/claim_history?id=eq.${id}&select=*`);
-                return rows?.[0] || null;
+                const rows = await dbProxy('GET', 'claim_history', { id });
+                return Array.isArray(rows) ? rows[0] || null : rows;
             }
         }
         if (method === 'POST') {
-            const rows = await sbFetch(`${sbUrl}/rest/v1/claim_history`, {
-                method: 'POST', body: JSON.stringify(body), headers: { 'Prefer': 'return=representation' },
-            });
+            const rows = await dbProxy('POST', 'claim_history', { body });
             return Array.isArray(rows) ? rows[0] : rows;
         }
         if (method === 'DELETE') {
-            await sbFetch(`${sbUrl}/rest/v1/claim_history?id=eq.${id}`, { method: 'DELETE' });
+            await dbProxy('DELETE', 'claim_history', { id });
             return null;
         }
     }
