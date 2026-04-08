@@ -556,6 +556,98 @@
             #resultsSection { display:block!important; }
             .result-header { background:#1d4ed8!important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         }
+
+        /* ══ 메인 탭 ══════════════════════════════════════════════ */
+        .main-tabs { display:flex; gap:4px; background:white; border-radius:var(--radius); padding:4px; margin-bottom:16px; box-shadow:var(--shadow); border:1px solid var(--border); }
+        .main-tab-btn { flex:1; padding:10px 16px; border:none; border-radius:12px; background:transparent; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; color:var(--muted); transition:all .2s; }
+        .main-tab-btn.active { background:var(--primary); color:white; box-shadow:0 2px 8px rgba(49,130,246,.3); }
+
+        /* ══ 고객 관리 ════════════════════════════════════════════ */
+        .cust-search { position:relative; margin-bottom:12px; }
+        .cust-search input { width:100%; padding:11px 14px 11px 40px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:inherit; background:white; outline:none; transition:border-color .2s; }
+        .cust-search input:focus { border-color:var(--primary); }
+        .cust-search-icon { position:absolute; left:13px; top:50%; transform:translateY(-50%); font-size:16px; }
+        .cust-card { background:white; border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:8px; cursor:pointer; transition:all .15s; display:flex; align-items:center; gap:12px; }
+        .cust-card:hover { border-color:var(--primary); box-shadow:0 2px 8px rgba(49,130,246,.1); transform:translateY(-1px); }
+        .cust-avatar { width:42px; height:42px; border-radius:50%; background:var(--primary-light); color:var(--primary); display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:800; flex-shrink:0; }
+        .cust-info { flex:1; min-width:0; }
+        .cust-name { font-size:15px; font-weight:700; }
+        .cust-sub { font-size:12px; color:var(--muted); margin-top:2px; }
+        .cust-meta { text-align:right; font-size:11px; color:var(--muted); line-height:1.6; }
+        .cust-empty { text-align:center; padding:40px 20px; color:var(--muted); font-size:14px; }
+
+        /* ── 고객 상세 ── */
+        .detail-header { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+        .detail-back { background:var(--bg); border:none; border-radius:8px; padding:8px 14px; cursor:pointer; font-size:13px; font-weight:600; font-family:inherit; color:var(--text); transition:background .15s; }
+        .detail-back:hover { background:var(--border); }
+        .detail-name { font-size:18px; font-weight:800; flex:1; }
+        .detail-tabs { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:14px; overflow-x:auto; }
+        .detail-tab { padding:10px 14px; border:none; background:none; font-size:13px; font-weight:600; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-2px; transition:color .2s,border-color .2s; font-family:inherit; white-space:nowrap; }
+        .detail-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+        .detail-pane { display:none; }
+        .detail-pane.active { display:block; }
+
+        /* ── 계약 카드 ── */
+        .contract-card { border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px; margin-bottom:8px; }
+        .contract-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; }
+        .contract-insurer { font-size:13px; font-weight:700; }
+        .contract-product { font-size:12px; color:var(--muted); }
+        .status-badge { font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; }
+        .status-정상 { background:#dcfce7; color:#16a34a; }
+        .status-실효 { background:#fef3c7; color:#92400e; }
+        .status-해지 { background:#fee2e2; color:#dc2626; }
+        .contract-meta { font-size:12px; color:var(--muted); display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; }
+        .coverage-toggle { width:100%; margin-top:8px; background:var(--bg); border:none; border-radius:6px; padding:7px 10px; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; color:var(--muted); text-align:left; transition:background .15s; }
+        .coverage-toggle:hover { background:var(--border); }
+        .coverage-list { margin-top:8px; border-top:1px solid var(--border); display:none; }
+        .coverage-list.open { display:block; }
+        .coverage-item { display:flex; justify-content:space-between; align-items:center; padding:7px 4px; border-bottom:1px solid var(--bg); font-size:12px; }
+        .coverage-item:last-child { border-bottom:none; }
+        .cov-cat { font-size:10px; font-weight:700; padding:2px 5px; border-radius:4px; background:var(--bg); color:var(--muted); margin-right:5px; white-space:nowrap; }
+        .cov-amt { font-weight:700; color:var(--primary); white-space:nowrap; }
+        .cov-inactive { opacity:.45; text-decoration:line-through; }
+
+        /* ── 청구 카드 ── */
+        .claim-card { border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+        .claim-left { flex:1; min-width:0; }
+        .claim-date { font-size:11px; color:var(--muted); margin-bottom:3px; }
+        .claim-hosp { font-size:14px; font-weight:700; }
+        .claim-diag { font-size:12px; color:var(--muted); margin-top:2px; }
+        .claim-right { text-align:right; flex-shrink:0; }
+        .claim-paid { font-size:15px; font-weight:800; color:var(--primary); }
+        .claim-grade { font-size:11px; color:var(--muted); margin-top:2px; }
+
+        /* ── 보장분석 ── */
+        .cov-analysis-section { margin-bottom:16px; }
+        .cov-analysis-title { font-size:13px; font-weight:800; color:var(--muted); margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+        .cov-analysis-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--bg); font-size:13px; }
+        .cov-analysis-row:last-child { border-bottom:none; }
+        .cov-analysis-row.gap { background:#fff5f5; margin:0 -4px; padding:8px 4px; border-radius:4px; }
+        .cov-analysis-row.gap .cov-name { color:#dc2626; }
+        .cov-analysis-amt { font-weight:700; }
+        .cov-analysis-amt.ok { color:var(--success); }
+        .cov-analysis-amt.gap { color:#dc2626; }
+
+        /* ── 통합 모달 ── */
+        .db-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:600; align-items:center; justify-content:center; padding:16px; }
+        .db-modal.open { display:flex; }
+        .db-modal-box { background:white; border-radius:var(--radius); padding:22px; width:100%; max-width:500px; max-height:88vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+        .db-modal-title { font-size:15px; font-weight:800; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; }
+        .db-modal-close { background:none; border:none; font-size:20px; cursor:pointer; color:var(--muted); padding:0 4px; }
+        .db-modal-footer { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
+
+        /* ── 인라인 빈 상태 ── */
+        .db-empty { text-align:center; padding:24px 16px; color:var(--muted); font-size:13px; }
+
+        /* ── 고객 선택 모달 고객 행 ── */
+        .cust-pick-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; cursor:pointer; transition:background .15s; }
+        .cust-pick-row:hover { background:var(--bg); }
+        .cust-pick-name { font-size:14px; font-weight:700; }
+        .cust-pick-sub { font-size:12px; color:var(--muted); }
+
+        /* ── 실손 계산기 고객 연동 바 ── */
+        .silson-cust-bar { display:flex; align-items:center; gap:8px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:13px; }
+        .silson-cust-bar .cust-label { flex:1; font-weight:600; color:#1e40af; }
     </style>
 </head>
 <body>
@@ -666,6 +758,15 @@
 
 <main class="container">
 
+    <!-- 메인 탭 네비게이션 -->
+    <div class="main-tabs">
+        <button class="main-tab-btn active" id="mainTabAnalysis" onclick="switchMainTab('analysis')">🔍 분석 도구</button>
+        <button class="main-tab-btn" id="mainTabCustomers" onclick="switchMainTab('customers')">👤 고객 관리</button>
+    </div>
+
+    <!-- ═══ 분석 도구 페이지 ═══ -->
+    <div id="pageAnalysis">
+
     <!-- 토스인슈어런스 리포트 -->
     <div class="card" id="tossCard">
         <div class="card-title">
@@ -703,6 +804,7 @@
             <div class="pdf-actions" style="margin-top:10px;">
                 <div style="flex:1;"></div>
                 <button class="btn btn-success btn-sm" onclick="applyTossToForm()">✓ 전체 특약 폼에 적용</button>
+                <button class="btn btn-primary btn-sm" onclick="openTossDbModal()" id="tossSaveDbBtn">👤 고객 DB에 저장</button>
             </div>
         </div>
     </div>
@@ -915,6 +1017,12 @@
                 💊 실손 의료비 예상 계산
                 <span class="gen-badge muted" id="silsonGenBadge">실손특약 미감지</span>
             </div>
+            <!-- 고객 연동 바 -->
+            <div class="silson-cust-bar" id="silsonCustBar" style="display:none;">
+                <span class="cust-label" id="silsonCustLabel">고객 미선택</span>
+                <button class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px;" onclick="detachCalcCust()">해제</button>
+            </div>
+            <button class="btn btn-outline btn-sm" id="silsonLoadCustBtn" style="width:100%;margin-bottom:8px;font-size:12px;" onclick="openCustSelectForCalc()">👤 고객 불러오기</button>
             <div class="form-row">
                 <div class="form-group" style="margin-bottom:0;">
                     <label class="form-label">급여 의료비 (원)</label>
@@ -972,6 +1080,7 @@
             <button class="btn btn-outline receipt-analyze-btn" id="receiptAnalyzeBtn" style="display:none;" onclick="analyzeReceipts()">🔍 영수증 분석 후 자동 입력</button>
             <div id="receiptResultWrap"></div>
             <div id="silsonResult" style="display:none;"></div>
+            <button class="btn btn-outline btn-sm" id="silsonSaveClaimBtn" style="display:none;width:100%;margin-top:6px;font-size:12px;" onclick="openSaveClaimFromCalc()">📋 청구 이력에 저장</button>
         </div>
         <div class="form-group">
             <label class="form-label">기타 치료 내용 <span style="font-weight:400;text-transform:none;">(선택)</span></label>
@@ -1001,6 +1110,232 @@
 
     <!-- ⑥ Results -->
     <div id="resultsSection" style="display:none;margin-top:4px;"></div>
+
+    </div><!-- /#pageAnalysis -->
+
+    <!-- ═══ 고객 관리 페이지 ═══ -->
+    <div id="pageCustomers" style="display:none;">
+
+        <!-- 고객 목록 -->
+        <div id="custListView">
+            <div class="cust-search">
+                <span class="cust-search-icon">🔍</span>
+                <input id="custSearchInput" type="text" placeholder="이름 또는 전화번호 검색" oninput="filterCustList(this.value)">
+            </div>
+            <div id="custList"><div class="cust-empty">불러오는 중…</div></div>
+            <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="openCustForm(null)">+ 새 고객 등록</button>
+        </div>
+
+        <!-- 고객 상세 -->
+        <div id="custDetailView" style="display:none;">
+            <div class="detail-header">
+                <button class="detail-back" onclick="showCustList()">← 목록</button>
+                <div class="detail-name" id="custDetailName"></div>
+                <button class="btn btn-outline btn-sm" onclick="confirmDeleteCust()" style="font-size:12px;padding:5px 10px;">삭제</button>
+            </div>
+            <div class="detail-tabs">
+                <button class="detail-tab active" id="dtab-info"      onclick="switchCustTab('info')">기본정보</button>
+                <button class="detail-tab"         id="dtab-contracts" onclick="switchCustTab('contracts')">보유보험</button>
+                <button class="detail-tab"         id="dtab-claims"   onclick="switchCustTab('claims')">청구이력</button>
+                <button class="detail-tab"         id="dtab-coverage" onclick="switchCustTab('coverage')">보장분석</button>
+            </div>
+
+            <!-- 기본정보 -->
+            <div class="detail-pane active" id="dpane-info">
+                <div class="card" style="margin-bottom:0;">
+                    <div class="form-group"><label class="form-label">이름 *</label><input class="form-control" id="custEditName" type="text"></div>
+                    <div class="form-row">
+                        <div class="form-group" style="margin-bottom:0;"><label class="form-label">생년월일</label><input class="form-control" id="custEditBirth" type="date"></div>
+                        <div class="form-group" style="margin-bottom:0;"><label class="form-label">성별</label>
+                            <select class="form-control" id="custEditGender"><option value="">선택</option><option>남</option><option>여</option></select>
+                        </div>
+                    </div>
+                    <div class="form-group"><label class="form-label">전화번호</label><input class="form-control" id="custEditPhone" type="tel" placeholder="010-0000-0000"></div>
+                    <div class="form-group" style="margin-bottom:12px;"><label class="form-label">메모</label><textarea class="form-control" id="custEditMemo" rows="3"></textarea></div>
+                    <button class="btn btn-primary" onclick="saveCustInfo()" style="width:100%;">저장</button>
+                </div>
+            </div>
+
+            <!-- 보유보험 -->
+            <div class="detail-pane" id="dpane-contracts">
+                <div id="contractsList"><div class="db-empty">불러오는 중…</div></div>
+                <button class="btn btn-outline" style="width:100%;margin-top:6px;" onclick="openContractForm(null)">+ 계약 추가</button>
+            </div>
+
+            <!-- 청구이력 -->
+            <div class="detail-pane" id="dpane-claims">
+                <div id="claimsList"><div class="db-empty">불러오는 중…</div></div>
+                <button class="btn btn-outline" style="width:100%;margin-top:6px;" onclick="openClaimForm(null)">+ 청구 추가</button>
+            </div>
+
+            <!-- 보장분석 -->
+            <div class="detail-pane" id="dpane-coverage">
+                <div id="coverageSummary"><div class="db-empty">보유보험 탭에서 특약을 등록하면 자동 분석됩니다.</div></div>
+            </div>
+        </div>
+
+    </div><!-- /#pageCustomers -->
+
+    <!-- ═══ 모달: 고객 생성/편집 ═══ -->
+    <div class="db-modal" id="custFormModal">
+        <div class="db-modal-box">
+            <div class="db-modal-title">
+                <span id="custFormTitle">새 고객 등록</span>
+                <button class="db-modal-close" onclick="closeCustForm()">✕</button>
+            </div>
+            <div class="form-group"><label class="form-label">이름 *</label><input class="form-control" id="cfName" type="text" placeholder="홍길동"></div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">생년월일</label><input class="form-control" id="cfBirth" type="date"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">성별</label>
+                    <select class="form-control" id="cfGender"><option value="">선택</option><option>남</option><option>여</option></select>
+                </div>
+            </div>
+            <div class="form-group"><label class="form-label">전화번호</label><input class="form-control" id="cfPhone" type="tel" placeholder="010-0000-0000"></div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">메모</label><textarea class="form-control" id="cfMemo" rows="2"></textarea></div>
+            <div class="db-modal-footer">
+                <button class="btn btn-outline btn-sm" onclick="closeCustForm()">취소</button>
+                <button class="btn btn-primary btn-sm" onclick="submitCustForm()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ 모달: 계약 추가/편집 ═══ -->
+    <div class="db-modal" id="contractFormModal">
+        <div class="db-modal-box">
+            <div class="db-modal-title">
+                <span id="contractFormTitle">계약 추가</span>
+                <button class="db-modal-close" onclick="closeContractForm()">✕</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">보험사 *</label><input class="form-control" id="ctInsurer" placeholder="삼성화재"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">상품명 *</label><input class="form-control" id="ctProduct" placeholder="무배당 건강보험"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">계약일</label><input class="form-control" id="ctContractDate" type="date"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">만기일</label><input class="form-control" id="ctExpiryDate" type="date"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">계약자</label><input class="form-control" id="ctPolicyholder" placeholder="홍길동"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">피보험자</label><input class="form-control" id="ctInsured" placeholder="홍길동"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">월납보험료(원)</label><input class="form-control" id="ctPremium" type="number" placeholder="50000"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">실손세대</label>
+                    <select class="form-control" id="ctSilsonGen">
+                        <option value="">없음/미해당</option>
+                        <option>1세대</option><option>2세대</option><option>3세대</option><option>4세대</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">증권번호</label><input class="form-control" id="ctPolicyNum" placeholder="선택사항"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">상태</label>
+                    <select class="form-control" id="ctStatus"><option>정상</option><option>실효</option><option>해지</option></select>
+                </div>
+            </div>
+            <div class="db-modal-footer">
+                <button class="btn btn-outline btn-sm" onclick="closeContractForm()">취소</button>
+                <button class="btn btn-primary btn-sm" onclick="submitContractForm()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ 모달: 특약 추가 ═══ -->
+    <div class="db-modal" id="coverageFormModal">
+        <div class="db-modal-box">
+            <div class="db-modal-title">
+                <span>특약 추가</span>
+                <button class="db-modal-close" onclick="document.getElementById('coverageFormModal').classList.remove('open')">✕</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">대분류 *</label>
+                    <select class="form-control" id="cvCategory">
+                        <option>실비</option><option>수술비</option><option>진단비</option><option>입원비</option><option>사망</option><option>기타</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">소분류</label><input class="form-control" id="cvSubcategory" placeholder="예: 암, 3대질병"></div>
+            </div>
+            <div class="form-group"><label class="form-label">특약명 *</label><input class="form-control" id="cvName" placeholder="암진단특약 (갱신형)"></div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">보장금액(원)</label><input class="form-control" id="cvAmount" type="number" placeholder="20000000"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">보장여부</label>
+                    <select class="form-control" id="cvActive"><option value="true">활성</option><option value="false">미가입/해지</option></select>
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">비고</label><input class="form-control" id="cvNotes" placeholder="갱신주기, 조건 등"></div>
+            <div class="db-modal-footer">
+                <button class="btn btn-outline btn-sm" onclick="document.getElementById('coverageFormModal').classList.remove('open')">취소</button>
+                <button class="btn btn-primary btn-sm" onclick="submitCoverageForm()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ 모달: 청구 추가 ═══ -->
+    <div class="db-modal" id="claimFormModal">
+        <div class="db-modal-box">
+            <div class="db-modal-title">
+                <span id="claimFormTitle">청구 추가</span>
+                <button class="db-modal-close" onclick="closeClaimForm()">✕</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">청구일 *</label><input class="form-control" id="clDate" type="date"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">병원명</label><input class="form-control" id="clHosp" placeholder="서울성모병원"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">병원등급</label>
+                    <select class="form-control" id="clGrade"><option value="">선택</option><option>의원</option><option>병원</option><option>종합병원</option><option>상급종합병원</option></select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">적용 실손세대</label>
+                    <select class="form-control" id="clSilsonGen"><option value="">없음</option><option>1세대</option><option>2세대</option><option>3세대</option><option>4세대</option></select>
+                </div>
+            </div>
+            <div class="form-group"><label class="form-label">진단명</label><input class="form-control" id="clDiag" placeholder="고혈압, 위염 등"></div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">급여 본인부담(원)</label><input class="form-control" id="clInsuredCov" type="number" placeholder="0"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">비급여(원)</label><input class="form-control" id="clNonInsured" type="number" placeholder="0"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">총 청구금액(원)</label><input class="form-control" id="clTotal" type="number" placeholder="0"></div>
+                <div class="form-group" style="margin-bottom:0;"><label class="form-label">실손 수령액(원)</label><input class="form-control" id="clPaid" type="number" placeholder="0"></div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">메모</label><input class="form-control" id="clMemo" placeholder="선택사항"></div>
+            <div class="db-modal-footer">
+                <button class="btn btn-outline btn-sm" onclick="closeClaimForm()">취소</button>
+                <button class="btn btn-primary btn-sm" onclick="submitClaimForm()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ 모달: 고객 선택 ═══ -->
+    <div class="db-modal" id="custSelectModal">
+        <div class="db-modal-box">
+            <div class="db-modal-title">
+                <span>고객 선택</span>
+                <button class="db-modal-close" onclick="closeCustSelect()">✕</button>
+            </div>
+            <div class="cust-search" style="margin-bottom:8px;">
+                <span class="cust-search-icon">🔍</span>
+                <input id="custSelectSearch" type="text" placeholder="이름 검색" oninput="filterCustSelect(this.value)">
+            </div>
+            <div id="custSelectList" style="max-height:300px;overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <!-- ═══ 모달: 토스 PDF → DB 저장 ═══ -->
+    <div class="db-modal" id="tossDbModal">
+        <div class="db-modal-box">
+            <div class="db-modal-title">
+                <span>고객 DB에 저장</span>
+                <button class="db-modal-close" onclick="document.getElementById('tossDbModal').classList.remove('open')">✕</button>
+            </div>
+            <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">보장분석 PDF에서 추출된 계약 정보를 저장할 고객을 선택하세요.</p>
+            <div class="cust-search" style="margin-bottom:8px;">
+                <span class="cust-search-icon">🔍</span>
+                <input id="tossDbSearch" type="text" placeholder="이름 검색" oninput="filterTossDbCust(this.value)">
+            </div>
+            <div id="tossDbCustList" style="max-height:260px;overflow-y:auto;"></div>
+        </div>
+    </div>
 
 </main>
 </div><!-- /#appContent -->
@@ -1124,6 +1459,10 @@ function onSilsonChange() {
     if (r.biGup > 0) noteItems.push(`비급여 자기부담 ${bRatePct}%`);
     if (!hasHosp && r.gradeDeduct > 0) noteItems.push(`외래공제 ${r.gradeDeduct.toLocaleString()}원`);
     if (hasHosp && r.gupSelfDeduct >= 2000000) noteItems.push('급여 자기부담 상한 200만원 적용');
+
+    // 고객 연동된 경우 청구 저장 버튼 표시
+    const saveBtn = document.getElementById('silsonSaveClaimBtn');
+    if (saveBtn && _calcCustId) saveBtn.style.display = '';
 
     resultEl.style.display = 'block';
     resultEl.innerHTML = `<div class="silson-result-box">
@@ -4917,6 +5256,632 @@ function init() {
     }
 }
 init();
+
+// ════════════════════════════════════════════════════════════
+// 고객 DB — 공통 fetch 헬퍼
+// ════════════════════════════════════════════════════════════
+async function dbFetch(url, options = {}) {
+    const { method = 'GET', body } = options;
+    const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {})
+    });
+    if (res.status === 401) { sessionStorage.removeItem('access_token'); showGate(); throw new Error('세션 만료'); }
+    if (res.status === 204) return null;
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    return data;
+}
+
+// ════════════════════════════════════════════════════════════
+// 메인 탭 전환
+// ════════════════════════════════════════════════════════════
+function switchMainTab(tab) {
+    const isCustomers = tab === 'customers';
+    document.getElementById('pageAnalysis').style.display  = isCustomers ? 'none' : '';
+    document.getElementById('pageCustomers').style.display = isCustomers ? '' : 'none';
+    document.getElementById('mainTabAnalysis').classList.toggle('active', !isCustomers);
+    document.getElementById('mainTabCustomers').classList.toggle('active',  isCustomers);
+    if (isCustomers && !_custListLoaded) loadCustomers();
+}
+
+// ════════════════════════════════════════════════════════════
+// 고객 목록
+// ════════════════════════════════════════════════════════════
+let _custListLoaded = false;
+let _custCache = [];
+let _activeCustId = null;
+let _activeCovContractId = null; // 특약 추가 대상 계약 ID
+
+async function loadCustomers() {
+    _custListLoaded = true;
+    try {
+        _custCache = await dbFetch('/api/customers');
+        renderCustList(_custCache);
+    } catch (e) {
+        document.getElementById('custList').innerHTML = `<div class="db-empty">불러오기 실패: ${e.message}</div>`;
+    }
+}
+
+function renderCustList(list) {
+    const el = document.getElementById('custList');
+    if (!list.length) { el.innerHTML = '<div class="cust-empty">등록된 고객이 없습니다.<br>아래 버튼으로 첫 고객을 등록해보세요.</div>'; return; }
+    el.innerHTML = list.map(c => {
+        const age = c.birth_date ? `${new Date().getFullYear() - new Date(c.birth_date).getFullYear()}세` : '';
+        const gender = c.gender || '';
+        const sub = [age, gender, c.phone].filter(Boolean).join(' · ');
+        const contracts = c.contract_count ? `계약 ${c.contract_count}건` : '계약 없음';
+        const lastClaim = c.last_claim_date ? `최근 청구 ${c.last_claim_date.slice(0,7)}` : '';
+        return `<div class="cust-card" onclick="showCustDetail('${c.id}')">
+            <div class="cust-avatar">${c.name.slice(0,1)}</div>
+            <div class="cust-info">
+                <div class="cust-name">${c.name}</div>
+                <div class="cust-sub">${sub || '정보 없음'}</div>
+            </div>
+            <div class="cust-meta">${contracts}<br>${lastClaim}</div>
+        </div>`;
+    }).join('');
+}
+
+function filterCustList(q) {
+    const filtered = q ? _custCache.filter(c => c.name?.includes(q) || c.phone?.includes(q)) : _custCache;
+    renderCustList(filtered);
+}
+
+// ════════════════════════════════════════════════════════════
+// 고객 생성/편집 모달
+// ════════════════════════════════════════════════════════════
+let _editCustId = null;
+
+function openCustForm(custOrNull) {
+    _editCustId = custOrNull?.id || null;
+    document.getElementById('custFormTitle').textContent = custOrNull ? '고객 정보 수정' : '새 고객 등록';
+    document.getElementById('cfName').value  = custOrNull?.name        || '';
+    document.getElementById('cfBirth').value = custOrNull?.birth_date  || '';
+    document.getElementById('cfGender').value= custOrNull?.gender      || '';
+    document.getElementById('cfPhone').value = custOrNull?.phone       || '';
+    document.getElementById('cfMemo').value  = custOrNull?.memo        || '';
+    document.getElementById('custFormModal').classList.add('open');
+}
+
+function closeCustForm() { document.getElementById('custFormModal').classList.remove('open'); }
+
+async function submitCustForm() {
+    const name = document.getElementById('cfName').value.trim();
+    if (!name) { toast('이름을 입력해주세요.'); return; }
+    const body = {
+        name,
+        birth_date:  document.getElementById('cfBirth').value  || null,
+        gender:      document.getElementById('cfGender').value || null,
+        phone:       document.getElementById('cfPhone').value  || null,
+        memo:        document.getElementById('cfMemo').value   || null,
+    };
+    try {
+        if (_editCustId) {
+            await dbFetch(`/api/customers?id=${_editCustId}`, { method: 'PUT', body });
+            toast('저장됐습니다.');
+        } else {
+            const cust = await dbFetch('/api/customers', { method: 'POST', body });
+            toast('고객이 등록됐습니다.');
+            closeCustForm();
+            await loadCustomers();
+            showCustDetail(cust.id);
+            return;
+        }
+        closeCustForm();
+        await loadCustomers();
+    } catch (e) { toast(`오류: ${e.message}`); }
+}
+
+// ════════════════════════════════════════════════════════════
+// 고객 상세
+// ════════════════════════════════════════════════════════════
+async function showCustDetail(id) {
+    _activeCustId = id;
+    document.getElementById('custListView').style.display   = 'none';
+    document.getElementById('custDetailView').style.display = '';
+    switchCustTab('info');
+    // 기본정보 로드
+    try {
+        const cust = await dbFetch(`/api/customers?id=${id}`);
+        if (!cust) { toast('고객 정보를 찾을 수 없습니다.'); showCustList(); return; }
+        document.getElementById('custDetailName').textContent = cust.name;
+        document.getElementById('custEditName').value  = cust.name        || '';
+        document.getElementById('custEditBirth').value = cust.birth_date  || '';
+        document.getElementById('custEditGender').value= cust.gender      || '';
+        document.getElementById('custEditPhone').value = cust.phone       || '';
+        document.getElementById('custEditMemo').value  = cust.memo        || '';
+    } catch(e) { toast(`오류: ${e.message}`); }
+}
+
+function showCustList() {
+    _activeCustId = null;
+    document.getElementById('custDetailView').style.display = 'none';
+    document.getElementById('custListView').style.display   = '';
+}
+
+function switchCustTab(tab) {
+    ['info','contracts','claims','coverage'].forEach(t => {
+        document.getElementById(`dtab-${t}`).classList.toggle('active', t === tab);
+        document.getElementById(`dpane-${t}`).classList.toggle('active', t === tab);
+    });
+    if (tab === 'contracts') loadContracts();
+    if (tab === 'claims')    loadClaims();
+    if (tab === 'coverage')  loadCoverageAnalysis();
+}
+
+async function saveCustInfo() {
+    if (!_activeCustId) return;
+    const name = document.getElementById('custEditName').value.trim();
+    if (!name) { toast('이름을 입력해주세요.'); return; }
+    try {
+        await dbFetch(`/api/customers?id=${_activeCustId}`, { method: 'PUT', body: {
+            name,
+            birth_date:  document.getElementById('custEditBirth').value  || null,
+            gender:      document.getElementById('custEditGender').value || null,
+            phone:       document.getElementById('custEditPhone').value  || null,
+            memo:        document.getElementById('custEditMemo').value   || null,
+        }});
+        document.getElementById('custDetailName').textContent = name;
+        toast('저장됐습니다.');
+        await loadCustomers();
+    } catch(e) { toast(`오류: ${e.message}`); }
+}
+
+async function confirmDeleteCust() {
+    if (!_activeCustId) return;
+    const name = document.getElementById('custDetailName').textContent;
+    if (!confirm(`'${name}' 고객을 삭제하시겠습니까?\n계약 및 청구 이력이 모두 삭제됩니다.`)) return;
+    try {
+        await dbFetch(`/api/customers?id=${_activeCustId}`, { method: 'DELETE' });
+        toast('삭제됐습니다.');
+        showCustList();
+        await loadCustomers();
+    } catch(e) { toast(`오류: ${e.message}`); }
+}
+
+// ════════════════════════════════════════════════════════════
+// 계약 목록 + 특약
+// ════════════════════════════════════════════════════════════
+async function loadContracts() {
+    if (!_activeCustId) return;
+    const el = document.getElementById('contractsList');
+    el.innerHTML = '<div class="db-empty">불러오는 중…</div>';
+    try {
+        const contracts = await dbFetch(`/api/contracts?customer_id=${_activeCustId}`);
+        if (!contracts.length) { el.innerHTML = '<div class="db-empty">등록된 계약이 없습니다.</div>'; return; }
+        el.innerHTML = contracts.map(c => {
+            const statusCls = `status-${c.status || '정상'}`;
+            const meta = [
+                c.contract_date ? `계약일 ${c.contract_date.slice(0,10)}` : '',
+                c.premium_monthly ? `월 ${c.premium_monthly.toLocaleString()}원` : '',
+                c.silson_generation || '',
+            ].filter(Boolean).join(' · ');
+            const covHtml = (c.coverage || []).map(cv => `
+                <div class="coverage-item ${cv.is_active ? '' : 'cov-inactive'}">
+                    <span><span class="cov-cat">${cv.category}</span>${cv.coverage_name}</span>
+                    <span class="cov-amt">${cv.coverage_amount ? cv.coverage_amount.toLocaleString() + '원' : '-'}</span>
+                </div>`).join('');
+            return `<div class="contract-card">
+                <div class="contract-head">
+                    <div>
+                        <div class="contract-insurer">${c.insurer}</div>
+                        <div class="contract-product">${c.product_name}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span class="status-badge ${statusCls}">${c.status || '정상'}</span>
+                        <button class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 6px;" onclick="confirmDeleteContract('${c.id}')">삭제</button>
+                    </div>
+                </div>
+                <div class="contract-meta">${meta}</div>
+                <button class="coverage-toggle" onclick="toggleCoverage(this)">
+                    특약 ${c.coverage?.length || 0}건 보기 ▼
+                </button>
+                <div class="coverage-list">
+                    ${covHtml || '<div style="padding:8px 4px;font-size:12px;color:var(--muted);">특약 없음</div>'}
+                    <button class="btn btn-outline btn-sm" style="width:100%;margin-top:6px;font-size:11px;" onclick="openCoverageForm('${c.id}')">+ 특약 추가</button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) { el.innerHTML = `<div class="db-empty">오류: ${e.message}</div>`; }
+}
+
+function toggleCoverage(btn) {
+    const list = btn.nextElementSibling;
+    const open = list.classList.toggle('open');
+    btn.textContent = btn.textContent.replace(open ? '▼' : '▲', open ? '▲' : '▼');
+}
+
+// ════════════════════════════════════════════════════════════
+// 계약 추가 모달
+// ════════════════════════════════════════════════════════════
+let _editContractId = null;
+
+function openContractForm(contractOrNull) {
+    _editContractId = contractOrNull?.id || null;
+    document.getElementById('contractFormTitle').textContent = contractOrNull ? '계약 수정' : '계약 추가';
+    ['ctInsurer','ctProduct','ctContractDate','ctExpiryDate','ctPolicyholder','ctInsured','ctPremium','ctSilsonGen','ctPolicyNum'].forEach(id => {
+        const el = document.getElementById(id);
+        const key = { ctInsurer:'insurer', ctProduct:'product_name', ctContractDate:'contract_date', ctExpiryDate:'expiry_date', ctPolicyholder:'policyholder', ctInsured:'insured_name', ctPremium:'premium_monthly', ctSilsonGen:'silson_generation', ctPolicyNum:'policy_number' }[id];
+        if (el) el.value = contractOrNull?.[key] || '';
+    });
+    document.getElementById('ctStatus').value = contractOrNull?.status || '정상';
+    document.getElementById('contractFormModal').classList.add('open');
+}
+
+function closeContractForm() { document.getElementById('contractFormModal').classList.remove('open'); }
+
+async function submitContractForm() {
+    const insurer = document.getElementById('ctInsurer').value.trim();
+    const product = document.getElementById('ctProduct').value.trim();
+    if (!insurer || !product) { toast('보험사와 상품명을 입력해주세요.'); return; }
+    const body = {
+        customer_id:     _activeCustId,
+        insurer,
+        product_name:    product,
+        contract_date:   document.getElementById('ctContractDate').value  || null,
+        expiry_date:     document.getElementById('ctExpiryDate').value    || null,
+        policyholder:    document.getElementById('ctPolicyholder').value  || null,
+        insured_name:    document.getElementById('ctInsured').value       || null,
+        premium_monthly: parseInt(document.getElementById('ctPremium').value) || null,
+        silson_generation: document.getElementById('ctSilsonGen').value   || null,
+        policy_number:   document.getElementById('ctPolicyNum').value     || null,
+        status:          document.getElementById('ctStatus').value,
+    };
+    try {
+        if (_editContractId) {
+            await dbFetch(`/api/contracts?id=${_editContractId}`, { method: 'PUT', body });
+        } else {
+            await dbFetch('/api/contracts', { method: 'POST', body });
+        }
+        toast('저장됐습니다.');
+        closeContractForm();
+        loadContracts();
+    } catch(e) { toast(`오류: ${e.message}`); }
+}
+
+async function confirmDeleteContract(id) {
+    if (!confirm('이 계약을 삭제하시겠습니까? 특약 정보도 함께 삭제됩니다.')) return;
+    try {
+        await dbFetch(`/api/contracts?id=${id}`, { method: 'DELETE' });
+        toast('삭제됐습니다.'); loadContracts();
+    } catch(e) { toast(`오류: ${e.message}`); }
+}
+
+// ════════════════════════════════════════════════════════════
+// 특약 추가
+// ════════════════════════════════════════════════════════════
+function openCoverageForm(contractId) {
+    _activeCovContractId = contractId;
+    ['cvSubcategory','cvName','cvNotes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('cvCategory').value = '실비';
+    document.getElementById('cvAmount').value   = '';
+    document.getElementById('cvActive').value   = 'true';
+    document.getElementById('coverageFormModal').classList.add('open');
+}
+
+async function submitCoverageForm() {
+    const name = document.getElementById('cvName').value.trim();
+    if (!name) { toast('특약명을 입력해주세요.'); return; }
+    const body = {
+        _type:           'coverage',
+        contract_id:     _activeCovContractId,
+        category:        document.getElementById('cvCategory').value,
+        subcategory:     document.getElementById('cvSubcategory').value || null,
+        coverage_name:   name,
+        coverage_amount: parseInt(document.getElementById('cvAmount').value) || null,
+        is_active:       document.getElementById('cvActive').value === 'true',
+        notes:           document.getElementById('cvNotes').value || null,
+    };
+    try {
+        await dbFetch('/api/contracts', { method: 'POST', body });
+        toast('특약이 추가됐습니다.');
+        document.getElementById('coverageFormModal').classList.remove('open');
+        loadContracts();
+    } catch(e) { toast(`오류: ${e.message}`); }
+}
+
+// ════════════════════════════════════════════════════════════
+// 청구 이력
+// ════════════════════════════════════════════════════════════
+async function loadClaims() {
+    if (!_activeCustId) return;
+    const el = document.getElementById('claimsList');
+    el.innerHTML = '<div class="db-empty">불러오는 중…</div>';
+    try {
+        const claims = await dbFetch(`/api/claims?customer_id=${_activeCustId}`);
+        if (!claims.length) { el.innerHTML = '<div class="db-empty">청구 이력이 없습니다.</div>'; return; }
+        el.innerHTML = claims.map(c => `<div class="claim-card">
+            <div class="claim-left">
+                <div class="claim-date">${c.claim_date?.slice(0,10) || ''} ${c.silson_generation ? '· ' + c.silson_generation : ''}</div>
+                <div class="claim-hosp">${c.hospital_name || '병원명 미입력'}</div>
+                <div class="claim-diag">${c.diagnosis || ''}</div>
+            </div>
+            <div class="claim-right">
+                <div class="claim-paid">${c.insurance_paid != null ? c.insurance_paid.toLocaleString() + '원' : '-'}</div>
+                <div class="claim-grade">${c.hospital_grade || ''}</div>
+                <button class="btn btn-outline btn-sm" style="font-size:10px;padding:2px 6px;margin-top:4px;" onclick="confirmDeleteClaim('${c.id}')">삭제</button>
+            </div>
+        </div>`).join('');
+    } catch(e) { el.innerHTML = `<div class="db-empty">오류: ${e.message}</div>`; }
+}
+
+// ════════════════════════════════════════════════════════════
+// 청구 추가 모달
+// ════════════════════════════════════════════════════════════
+let _claimPrefill = null;
+
+function openClaimForm(prefill) {
+    _claimPrefill = prefill;
+    document.getElementById('claimFormTitle').textContent = '청구 추가';
+    document.getElementById('clDate').value        = prefill?.claim_date     || new Date().toISOString().slice(0,10);
+    document.getElementById('clHosp').value        = prefill?.hospital_name  || '';
+    document.getElementById('clGrade').value       = prefill?.hospital_grade || '';
+    document.getElementById('clDiag').value        = prefill?.diagnosis      || '';
+    document.getElementById('clInsuredCov').value  = prefill?.insured_covered || '';
+    document.getElementById('clNonInsured').value  = prefill?.non_insured    || '';
+    document.getElementById('clTotal').value       = prefill?.total_amount   || '';
+    document.getElementById('clPaid').value        = prefill?.insurance_paid || '';
+    document.getElementById('clSilsonGen').value   = prefill?.silson_generation || '';
+    document.getElementById('clMemo').value        = prefill?.memo           || '';
+    document.getElementById('claimFormModal').classList.add('open');
+}
+
+function closeClaimForm() { document.getElementById('claimFormModal').classList.remove('open'); }
+
+async function submitClaimForm() {
+    const claimDate = document.getElementById('clDate').value;
+    if (!claimDate) { toast('청구일을 입력해주세요.'); return; }
+    const body = {
+        customer_id:      _activeCustId,
+        claim_date:       claimDate,
+        hospital_name:    document.getElementById('clHosp').value       || null,
+        hospital_grade:   document.getElementById('clGrade').value      || null,
+        diagnosis:        document.getElementById('clDiag').value       || null,
+        insured_covered:  parseInt(document.getElementById('clInsuredCov').value) || null,
+        non_insured:      parseInt(document.getElementById('clNonInsured').value) || null,
+        total_amount:     parseInt(document.getElementById('clTotal').value)      || null,
+        insurance_paid:   parseInt(document.getElementById('clPaid').value)       || null,
+        silson_generation: document.getElementById('clSilsonGen').value  || null,
+        memo:             document.getElementById('clMemo').value        || null,
+    };
+    try {
+        await dbFetch('/api/claims', { method: 'POST', body });
+        toast('청구 이력이 저장됐습니다.');
+        closeClaimForm();
+        loadClaims();
+    } catch(e) { toast(`오류: ${e.message}`); }
+}
+
+async function confirmDeleteClaim(id) {
+    if (!confirm('이 청구 이력을 삭제하시겠습니까?')) return;
+    try {
+        await dbFetch(`/api/claims?id=${id}`, { method: 'DELETE' });
+        toast('삭제됐습니다.'); loadClaims();
+    } catch(e) { toast(`오류: ${e.message}`); }
+}
+
+// ════════════════════════════════════════════════════════════
+// 보장분석 탭
+// ════════════════════════════════════════════════════════════
+async function loadCoverageAnalysis() {
+    if (!_activeCustId) return;
+    const el = document.getElementById('coverageSummary');
+    el.innerHTML = '<div class="db-empty">분석 중…</div>';
+    try {
+        const contracts = await dbFetch(`/api/contracts?customer_id=${_activeCustId}`);
+        const allCov = contracts.flatMap(c => (c.coverage || []).filter(cv => cv.is_active));
+        if (!allCov.length) { el.innerHTML = '<div class="db-empty">보유보험 탭에서 특약을 등록하면 자동 분석됩니다.</div>'; return; }
+
+        const CATEGORIES = ['실비','수술비','진단비','입원비','사망','기타'];
+        const grouped = {};
+        for (const cat of CATEGORIES) grouped[cat] = [];
+        for (const cv of allCov) {
+            const k = grouped[cv.category] ? cv.category : '기타';
+            grouped[k].push(cv);
+        }
+
+        const KEY_COVERAGES = [
+            { cat:'진단비', name:'암 진단비', keyword:'암' },
+            { cat:'진단비', name:'뇌혈관 진단비', keyword:'뇌' },
+            { cat:'진단비', name:'심혈관 진단비', keyword:'심' },
+            { cat:'수술비', name:'일반 수술비', keyword:'수술' },
+            { cat:'입원비', name:'입원일당', keyword:'입원일당' },
+        ];
+
+        let html = '';
+        for (const cat of CATEGORIES) {
+            const items = grouped[cat];
+            if (!items.length) continue;
+            const total = items.reduce((s, cv) => s + (cv.coverage_amount || 0), 0);
+            html += `<div class="cov-analysis-section">
+                <div class="cov-analysis-title">${cat} <span style="font-weight:400;float:right;">합계 ${total.toLocaleString()}원</span></div>
+                ${items.map(cv => `<div class="cov-analysis-row">
+                    <span>${cv.coverage_name}${cv.subcategory ? ` (${cv.subcategory})` : ''}</span>
+                    <span class="cov-analysis-amt ok">${cv.coverage_amount ? cv.coverage_amount.toLocaleString() + '원' : '-'}</span>
+                </div>`).join('')}
+            </div>`;
+        }
+
+        // 핵심 보장 누락 체크
+        const missingHtml = KEY_COVERAGES.filter(kc => {
+            return !allCov.some(cv => cv.category === kc.cat && cv.coverage_name?.includes(kc.keyword));
+        }).map(kc => `<div class="cov-analysis-row gap">
+            <span class="cov-name">⚠️ ${kc.name} 미보유</span>
+            <span class="cov-analysis-amt gap">-</span>
+        </div>`).join('');
+
+        if (missingHtml) {
+            html = `<div class="cov-analysis-section">
+                <div class="cov-analysis-title" style="color:#dc2626;">⚠️ 보장 공백 항목</div>
+                ${missingHtml}
+            </div>` + html;
+        }
+
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<div class="db-empty">오류: ${e.message}</div>`; }
+}
+
+// ════════════════════════════════════════════════════════════
+// 고객 선택 모달 (실손 계산기 연동)
+// ════════════════════════════════════════════════════════════
+let _custSelectCallback = null;
+
+async function openCustSelect(callback) {
+    _custSelectCallback = callback;
+    document.getElementById('custSelectSearch').value = '';
+    document.getElementById('custSelectModal').classList.add('open');
+    await renderCustSelectList('');
+}
+
+function closeCustSelect() { document.getElementById('custSelectModal').classList.remove('open'); }
+
+async function renderCustSelectList(q) {
+    const el = document.getElementById('custSelectList');
+    el.innerHTML = '<div class="db-empty">불러오는 중…</div>';
+    try {
+        const url = q ? `/api/customers?q=${encodeURIComponent(q)}` : '/api/customers';
+        const custs = await dbFetch(url);
+        if (!custs.length) { el.innerHTML = '<div class="db-empty">검색 결과 없음</div>'; return; }
+        el.innerHTML = custs.map(c => `<div class="cust-pick-row" onclick="pickCust('${c.id}','${c.name}',${JSON.stringify(c).replace(/'/g,"\\'")})" >
+            <div class="cust-avatar" style="width:34px;height:34px;font-size:14px;">${c.name.slice(0,1)}</div>
+            <div>
+                <div class="cust-pick-name">${c.name}</div>
+                <div class="cust-pick-sub">${[c.birth_date?.slice(0,4), c.gender, c.phone].filter(Boolean).join(' · ')}</div>
+            </div>
+        </div>`).join('');
+    } catch(e) { el.innerHTML = `<div class="db-empty">오류: ${e.message}</div>`; }
+}
+
+function filterCustSelect(q) { renderCustSelectList(q); }
+
+function pickCust(id, name, custObj) {
+    closeCustSelect();
+    if (_custSelectCallback) _custSelectCallback(id, name, custObj);
+}
+
+// ── 실손 계산기 고객 연동 ──────────────────────────────────
+let _calcCustId   = null;
+let _calcCustName = null;
+
+function openCustSelectForCalc() {
+    openCustSelect(async (id, name, cust) => {
+        _calcCustId   = id;
+        _calcCustName = name;
+        document.getElementById('silsonCustBar').style.display   = '';
+        document.getElementById('silsonLoadCustBtn').style.display = 'none';
+        document.getElementById('silsonCustLabel').textContent   = `👤 ${name}`;
+        document.getElementById('silsonSaveClaimBtn').style.display = '';
+
+        // 실손세대 자동 적용
+        const contracts = await dbFetch(`/api/contracts?customer_id=${id}`).catch(() => []);
+        const silsonContract = contracts.find(c => c.silson_generation);
+        if (silsonContract?.silson_generation) {
+            const genSel = document.getElementById('silsonGen');
+            if (genSel) { genSel.value = silsonContract.silson_generation; onSilsonGenChange(); }
+        }
+    });
+}
+
+function detachCalcCust() {
+    _calcCustId = _calcCustName = null;
+    document.getElementById('silsonCustBar').style.display   = 'none';
+    document.getElementById('silsonLoadCustBtn').style.display = '';
+    document.getElementById('silsonSaveClaimBtn').style.display = 'none';
+}
+
+function openSaveClaimFromCalc() {
+    if (!_calcCustId) { toast('먼저 고객을 선택해주세요.'); return; }
+    const r = calcSilsonBenefit();
+    const gup   = parseFloat(document.getElementById('silsonGup')?.value)   || 0;
+    const biGup = parseFloat(document.getElementById('silsonBiGup')?.value) || 0;
+    openClaimForm({
+        insured_covered:   gup,
+        non_insured:       biGup,
+        total_amount:      gup + biGup,
+        insurance_paid:    r?.total || null,
+        hospital_grade:    document.getElementById('silsonHospGrade')?.value || '',
+        silson_generation: r?.gen || '',
+    });
+}
+
+// ════════════════════════════════════════════════════════════
+// 토스 PDF → DB 저장
+// ════════════════════════════════════════════════════════════
+async function openTossDbModal() {
+    document.getElementById('tossDbSearch').value = '';
+    document.getElementById('tossDbModal').classList.add('open');
+    await renderTossDbCustList('');
+}
+
+async function renderTossDbCustList(q) {
+    const el = document.getElementById('tossDbCustList');
+    el.innerHTML = '<div class="db-empty">불러오는 중…</div>';
+    try {
+        const url = q ? `/api/customers?q=${encodeURIComponent(q)}` : '/api/customers';
+        const custs = await dbFetch(url);
+        if (!custs.length) { el.innerHTML = '<div class="db-empty">검색 결과 없음</div>'; return; }
+        el.innerHTML = custs.map(c => `<div class="cust-pick-row" onclick="saveTossToCustomer('${c.id}','${c.name}')">
+            <div class="cust-avatar" style="width:34px;height:34px;font-size:14px;">${c.name.slice(0,1)}</div>
+            <div>
+                <div class="cust-pick-name">${c.name}</div>
+                <div class="cust-pick-sub">${[c.birth_date?.slice(0,4), c.phone].filter(Boolean).join(' · ')}</div>
+            </div>
+        </div>`).join('');
+    } catch(e) { el.innerHTML = `<div class="db-empty">오류: ${e.message}</div>`; }
+}
+
+function filterTossDbCust(q) { renderTossDbCustList(q); }
+
+async function saveTossToCustomer(custId, custName) {
+    document.getElementById('tossDbModal').classList.remove('open');
+    // currentRiders / recommendRiders 에서 계약 정보 추출
+    const riders = typeof currentRiders !== 'undefined' ? currentRiders : [];
+    if (!riders.length) { toast('저장할 보장 데이터가 없습니다.'); return; }
+
+    // 보험사+상품명 기준으로 그룹화
+    const contractMap = {};
+    for (const r of riders) {
+        const key = `${r.insurer || '미상'}||${r.product || '미상'}`;
+        if (!contractMap[key]) contractMap[key] = { insurer: r.insurer || '미상', product_name: r.product || '미상', riders: [] };
+        contractMap[key].riders.push(r);
+    }
+
+    let saved = 0, failed = 0;
+    for (const { insurer, product_name, riders: rList } of Object.values(contractMap)) {
+        try {
+            const startDate = rList.find(r => r.startDate)?.startDate;
+            const silsonGen = rList.find(r => /실손|실비/i.test(r.rider))
+                ? (detectSilsonGeneration(startDate) || null) : null;
+            const coverage = rList.map(r => ({
+                category:       categorizeCoverage(r.rider),
+                coverage_name:  r.rider,
+                coverage_amount: r.amount || null,
+                is_active:       true,
+            }));
+            await dbFetch('/api/contracts', { method: 'POST', body: {
+                customer_id: custId,
+                insurer, product_name,
+                contract_date: startDate || null,
+                silson_generation: silsonGen,
+                coverage,
+            }});
+            saved++;
+        } catch { failed++; }
+    }
+    toast(`${custName}에 ${saved}개 계약 저장${failed ? `, ${failed}개 실패` : ''}`);
+}
+
+function categorizeCoverage(riderName) {
+    if (!riderName) return '기타';
+    if (/실손|실비|의료비/.test(riderName)) return '실비';
+    if (/수술/.test(riderName)) return '수술비';
+    if (/진단|암|뇌|심/.test(riderName)) return '진단비';
+    if (/입원/.test(riderName)) return '입원비';
+    if (/사망|CI|종신/.test(riderName)) return '사망';
+    return '기타';
+}
 </script>
 </body>
 </html>
