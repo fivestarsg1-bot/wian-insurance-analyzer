@@ -1263,10 +1263,38 @@ async function _pdfFirstPageToBase64(file) {
     return canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
 }
 
-// 1차 분류용 (max_tokens: 50)
-const RECEIPT_CLASSIFY_SYSTEM = `이 이미지는 다음 중 무엇입니까? 단어 하나만 답하세요: 영수증 / 세부내역서 / 기타`;
+// 1차 분류용 (max_tokens: 80)
+// 반환 형식: "영수증" | "세부내역서 N/M" | "기타"
+const RECEIPT_CLASSIFY_SYSTEM = `이 이미지의 문서 유형과 페이지 정보를 파악하세요.
+- 일반 병원 영수증(진료비 납부확인서)이면: 영수증
+- 진료비 세부내역서이면: 세부내역서 N/M (N=현재 페이지, M=전체 페이지 수, 예: 세부내역서 1/4)
+  페이지 번호를 찾을 수 없으면: 세부내역서 1/1
+- 그 외이면: 기타
+답변 형식 그대로만 출력하세요. 설명 없이.`;
 
-// 세부내역서 전용 — 합계만 추출 (항목 목록 불필요)
+// 세부내역서 마지막 페이지 — 합계 행만 추출
+const RECEIPT_DETAIL_LAST_SYSTEM = `이것은 진료비 세부내역서의 합계 페이지입니다.
+개별 항목 금액은 무시하고, "합계" 또는 "총계" 행의 금액만 추출하세요.
+이미지가 회전되어 있거나 기울어져 있어도 텍스트를 최대한 읽어내세요.
+반드시 순수 JSON만 반환 (마크다운·설명 없이):
+{
+  "totalAmount": 환자납부총액(공단부담금제외,숫자),
+  "insuranceCovered": 급여본인부담금합계(숫자),
+  "nonInsuranceCovered": 비급여본인부담금합계(숫자)
+}
+금액 외 텍스트는 절대 출력하지 마세요.`;
+
+// 세부내역서 중간 페이지 — 금액 0, 구조만 반환
+const RECEIPT_DETAIL_MID_SYSTEM = `이것은 진료비 세부내역서의 중간 페이지(항목 목록 페이지)입니다.
+금액 합산은 마지막 페이지에서 수행하므로 여기서는 금액을 추출하지 마세요.
+반드시 순수 JSON만 반환 (마크다운·설명 없이):
+{
+  "totalAmount": 0,
+  "insuranceCovered": 0,
+  "nonInsuranceCovered": 0
+}`;
+
+// 세부내역서 단일 페이지(1/1) — 합계만 추출 (항목 목록 불필요)
 const RECEIPT_DETAIL_SYSTEM = `이것은 진료비 세부내역서입니다. 항목 목록은 추출하지 말고 합계 금액만 추출하세요.
 이미지가 회전되어 있거나 기울어져 있어도 텍스트를 최대한 읽어내세요.
 반드시 순수 JSON만 반환 (마크다운·설명 없이):
@@ -1343,30 +1371,50 @@ async function analyzeReceipts() {
                 : await _resizeImageToBase64(f);
             const imgContent = { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } };
 
-            // ── 1차: 문서 타입 분류 (max_tokens 50) ──────────────
+            // ── 1차: 문서 타입 분류 (max_tokens 80) ──────────────
             progEl.textContent = `${i + 1} / ${receiptFiles.length} 문서 유형 감지 중…`;
             let docType = '영수증';
+            let pageNum = 1, totalPages = 1;
             try {
                 const classData = await _receiptFetch({
-                    model: 'claude-sonnet-4-6', max_tokens: 50,
+                    model: 'claude-sonnet-4-6', max_tokens: 80,
                     system: RECEIPT_CLASSIFY_SYSTEM,
                     messages: [{ role: 'user', content: [imgContent, { type: 'text', text: '?' }] }]
                 }, 20000);
                 const classText = (classData.content?.[0]?.text || '').trim();
-                if (/세부내역/.test(classText)) docType = '세부내역서';
-                else if (/기타/.test(classText)) { _showReceiptError('의료비 영수증 또는 세부내역서 이미지를 올려주세요.'); continue; }
+                if (/세부내역/.test(classText)) {
+                    docType = '세부내역서';
+                    // "세부내역서 2/4" 형태에서 페이지 번호 추출
+                    const m = classText.match(/(\d+)\s*\/\s*(\d+)/);
+                    if (m) { pageNum = parseInt(m[1]); totalPages = parseInt(m[2]); }
+                } else if (/기타/.test(classText)) {
+                    _showReceiptError('의료비 영수증 또는 세부내역서 이미지를 올려주세요.');
+                    continue;
+                }
             } catch (_) { /* 분류 실패 시 기본값(영수증)으로 진행 */ }
 
             // ── 2차: 본문 분석 ────────────────────────────────────
             progEl.textContent = `${i + 1} / ${receiptFiles.length} ${docType} 분석 중…`;
             const isDetail = docType === '세부내역서';
+            const isLastPage   = isDetail && pageNum === totalPages;
+            const isMiddlePage = isDetail && totalPages > 1 && pageNum < totalPages;
+
+            let detailSystem;
+            if (!isDetail)         detailSystem = RECEIPT_SYSTEM;
+            else if (isMiddlePage) detailSystem = RECEIPT_DETAIL_MID_SYSTEM;
+            else if (isLastPage && totalPages > 1) detailSystem = RECEIPT_DETAIL_LAST_SYSTEM;
+            else                   detailSystem = RECEIPT_DETAIL_SYSTEM; // 단일 페이지(1/1)
+
             const raw = await _receiptFetch({
                 model: 'claude-sonnet-4-6',
-                max_tokens: 4096,
-                system: isDetail ? RECEIPT_DETAIL_SYSTEM : RECEIPT_SYSTEM,
+                max_tokens: isMiddlePage ? 200 : 4096,
+                system: detailSystem,
                 messages: [{ role: 'user', content: [
                     imgContent,
-                    { type: 'text', text: isDetail ? '합계 금액만 추출해주세요.' : '이 의료비 영수증을 분석해주세요.' }
+                    { type: 'text', text: isDetail
+                        ? (isMiddlePage ? '이 페이지는 중간 페이지입니다. JSON을 반환해주세요.'
+                                        : '합계 금액만 추출해주세요.')
+                        : '이 의료비 영수증을 분석해주세요.' }
                 ]}]
             });
 
@@ -1384,7 +1432,10 @@ async function analyzeReceipts() {
             }
 
             if (parsed.error) { _showReceiptError(parsed.error); continue; }
-            if (isTruncated) parsed._truncated = true; // 부분 파싱 표시
+            if (isTruncated) parsed._truncated = true;
+            if (isLastPage)   parsed._isLastPage   = true;
+            if (isMiddlePage) parsed._isMiddlePage  = true;
+            if (isDetail)     parsed._isDetail      = true;
             allResults.push(parsed);
 
         } catch (err) {
@@ -1409,15 +1460,28 @@ function _showReceiptError(msg) {
 }
 
 function _mergeReceiptResults(results) {
+    // 금액 우선순위:
+    // 1순위: 세부내역서 마지막 페이지 합계 (공단부담금 제외된 확정 합계)
+    // 2순위: 영수증(비세부내역서) 금액
+    // 3순위: 폴백 — 전체 합산 (단일 페이지 세부내역서 포함)
+    const lastPageResults = results.filter(r => r._isLastPage);
+    const receiptResults  = results.filter(r => !r._isDetail);
+    const amountSource    = lastPageResults.length ? lastPageResults
+                          : receiptResults.length  ? receiptResults
+                          : results.filter(r => !r._isMiddlePage); // 중간 페이지 제외
+
+    const sum = (arr, key) => arr.reduce((s, r) => s + (r[key] || 0), 0);
+
     return {
         hospitalName:  results.map(r => r.hospitalName).filter(Boolean).join(' / '),
-        hospitalGrade: results[0]?.hospitalGrade || '의원',
-        visitDate:     results[0]?.visitDate || '',
-        insuranceCovered:    results.reduce((s, r) => s + (r.insuranceCovered    || 0), 0),
-        nonInsuranceCovered: results.reduce((s, r) => s + (r.nonInsuranceCovered || 0), 0),
-        totalAmount:         results.reduce((s, r) => s + (r.totalAmount         || 0), 0),
-        items:      results.flatMap(r => r.items || []),
-        _truncated: results.some(r => r._truncated)
+        hospitalGrade: (results.find(r => r.hospitalGrade) || results[0])?.hospitalGrade || '의원',
+        visitDate:     (results.find(r => r.visitDate) || results[0])?.visitDate || '',
+        insuranceCovered:    sum(amountSource, 'insuranceCovered'),
+        nonInsuranceCovered: sum(amountSource, 'nonInsuranceCovered'),
+        totalAmount:         sum(amountSource, 'totalAmount'),
+        items:      results.filter(r => !r._isDetail).flatMap(r => r.items || []),
+        _truncated:     results.some(r => r._truncated),
+        _hasMiddlePages: results.some(r => r._isMiddlePage)
     };
 }
 
@@ -1457,8 +1521,12 @@ function _renderReceiptResultCard(merged) {
         ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#92400e;">
             ⚠️ 항목이 너무 많아 일부만 인식됐어요. 영수증과 세부내역서를 따로 올려주시면 더 정확해요.
            </div>` : '';
+    const midPageNotice = merged._hasMiddlePages
+        ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#1e40af;">
+            ℹ️ 세부내역서 중간 페이지(항목 나열 페이지)가 포함됐습니다. 금액은 마지막 페이지의 합계 행에서 가져왔습니다.
+           </div>` : '';
 
-    wrap.innerHTML = truncatedWarn + `<div class="receipt-result-card">
+    wrap.innerHTML = truncatedWarn + midPageNotice + `<div class="receipt-result-card">
         <div class="rr-header">
             📋 영수증 인식 결과
             <span class="rr-meta">${metaParts}</span>
