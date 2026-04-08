@@ -517,17 +517,22 @@
         .receipt-thumb-icon { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:26px; background:#fef3c7; }
         .receipt-thumb-del { position:absolute; top:2px; right:2px; background:rgba(0,0,0,.55); color:white; border:none; border-radius:50%; width:18px; height:18px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; padding:0; }
         .receipt-analyze-btn { margin-top:10px; width:100%; }
-        .receipt-progress { font-size:12px; color:var(--primary); margin-top:6px; text-align:center; min-height:18px; }
+        .receipt-loading { display:flex; align-items:center; justify-content:center; gap:8px; padding:14px; font-size:13px; color:var(--primary); }
+        .receipt-spinner { width:18px; height:18px; border:2px solid var(--primary-light); border-top-color:var(--primary); border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
+        .receipt-progress { font-size:12px; color:var(--muted); margin-top:4px; text-align:center; }
         .receipt-result-card { margin-top:10px; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
-        .receipt-result-header { background:var(--bg); padding:10px 12px; font-weight:700; font-size:12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:6px; }
-        .rr-table { width:100%; border-collapse:collapse; font-size:11px; }
-        .rr-table th { background:#f8fafc; padding:6px 10px; text-align:left; font-size:10px; font-weight:700; color:var(--muted); border-bottom:1px solid var(--border); white-space:nowrap; }
-        .rr-table td { padding:6px 10px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
-        .rr-table tr:last-child td { border-bottom:none; }
-        .rr-covered   { color:#15803d; font-weight:700; }
-        .rr-uncovered { color:#b91c1c; }
-        .rr-3jong     { color:#d97706; font-weight:600; }
-        .receipt-summary { background:#f0fdf4; padding:10px 12px; border-top:1px solid #bbf7d0; font-size:12px; line-height:1.9; color:#166534; }
+        .rr-header { background:var(--bg); padding:10px 12px; font-weight:700; font-size:12px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+        .rr-meta   { font-size:11px; font-weight:400; color:var(--muted); }
+        .rr-items  { display:flex; flex-direction:column; }
+        .rr-item   { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid #f1f5f9; font-size:12px; }
+        .rr-item:last-child { border-bottom:none; }
+        .rr-item-name  { flex:1; font-weight:500; }
+        .rr-item-type  { font-size:10px; padding:1px 7px; border-radius:20px; font-weight:700; white-space:nowrap; }
+        .rr-type-gup   { background:#dbeafe; color:#1e40af; }
+        .rr-type-bigup { background:#f3e8ff; color:#6b21a8; }
+        .rr-item-amt   { font-weight:700; color:var(--text); white-space:nowrap; min-width:70px; text-align:right; }
+        .rr-summary    { background:#f0fdf4; border-top:1px solid #bbf7d0; padding:10px 12px; font-size:12px; color:#166634; line-height:1.9; }
+        .rr-error      { padding:14px 12px; font-size:13px; color:#b91c1c; background:#fff5f5; border:1px solid #fecaca; border-radius:var(--radius-sm); margin-top:10px; }
 
         /* ── Print ── */
         @media print {
@@ -942,7 +947,9 @@
             </div>
             <input type="file" id="receiptInput" accept="image/*,application/pdf" multiple style="display:none" onchange="onReceiptSelect(this.files)">
             <div class="receipt-thumbs" id="receiptThumbs"></div>
-            <div class="receipt-progress" id="receiptProgress" style="display:none;"></div>
+            <div id="receiptLoadingWrap" style="display:none;">
+                <div class="receipt-loading"><div class="receipt-spinner"></div><span id="receiptProgress">분석 중…</span></div>
+            </div>
             <button class="btn btn-outline receipt-analyze-btn" id="receiptAnalyzeBtn" style="display:none;" onclick="analyzeReceipts()">🔍 영수증 분석 후 자동 입력</button>
             <div id="receiptResultWrap"></div>
             <div id="silsonResult" style="display:none;"></div>
@@ -1220,7 +1227,7 @@ function _refreshReceiptUI() {
     document.getElementById('receiptAnalyzeBtn').style.display = has ? '' : 'none';
     if (!has) {
         document.getElementById('receiptResultWrap').innerHTML = '';
-        document.getElementById('receiptProgress').style.display = 'none';
+        document.getElementById('receiptLoadingWrap').style.display = 'none';
     }
 }
 
@@ -1256,47 +1263,36 @@ async function _pdfFirstPageToBase64(file) {
     return canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
 }
 
-const RECEIPT_SYSTEM = `당신은 한국 의료비 영수증 및 세부내역서 분석 전문가입니다.
-이미지에서 의료비 항목을 추출하고 실손보험 보장 여부를 판단하세요.
+const RECEIPT_SYSTEM = `당신은 병원 영수증 분석 전문가입니다. 영수증 이미지에서 다음 항목을 JSON으로 추출하세요.
+이미지가 영수증이 아닌 경우 {"error":"영수증이 아닙니다"} 만 반환하세요.
 
-실손 표준약관 기준 비보장 항목:
-- 영양제·비타민제 등 질병 치료 목적 외 약제
-- 상급병실료 차액 (기준병실 초과분)
-- 선택진료료 (특진비)
-- 미용·성형 목적 시술
-- 치과 치료 (임플란트·보철 등)
-- 한방 치료 (침·뜸·부항 등)
-- 건강검진·예방접종
-- 산재보험·자동차보험 적용 항목
-
-비급여 3종 (별도 한도 적용):
-- 도수치료·체외충격파·증식치료
-- 주사료 (비급여 주사제)
-- MRI·MRA
-
-반드시 순수 JSON만 반환 (마크다운 없이):
+반드시 순수 JSON만 반환 (마크다운·설명 없이):
 {
-  "hospital": "병원명",
-  "hospital_grade": "의원|병원|종합병원|상급종합병원",
-  "visit_date": "YYYY-MM-DD",
+  "totalAmount": 총 청구금액(숫자),
+  "insuranceCovered": 급여 본인부담금(숫자),
+  "nonInsuranceCovered": 비급여 본인부담금(숫자),
+  "hospitalName": "병원명",
+  "hospitalGrade": "의원|병원|종합병원|상급종합병원",
+  "visitDate": "YYYY-MM-DD",
   "items": [
-    { "name": "항목명", "급여": 숫자, "비급여": 숫자, "covered": true, "category": "일반|비급여3종_도수|비급여3종_주사|비급여3종_MRI|비보장", "reason": "비보장 사유" }
-  ],
-  "summary": { "총급여": 숫자, "총비급여_일반": 숫자, "총비급여_3종": 숫자, "비보장금액": 숫자, "보장대상_급여": 숫자, "보장대상_비급여_일반": 숫자, "보장대상_비급여_3종": 숫자 }
-}`;
+    { "name": "항목명", "amount": 금액(숫자), "type": "급여|비급여" }
+  ]
+}
+금액은 원 단위 숫자만. 항목이 없거나 읽을 수 없으면 0 또는 null.`;
 
 async function analyzeReceipts() {
     const apiKey = localStorage.getItem('api_key');
     if (!apiKey) { toast('API 키를 먼저 입력해주세요.'); return; }
     if (!receiptFiles.length) return;
 
-    const btn  = document.getElementById('receiptAnalyzeBtn');
-    const prog = document.getElementById('receiptProgress');
-    btn.disabled = true; prog.style.display = 'block';
+    const btn      = document.getElementById('receiptAnalyzeBtn');
+    const loadWrap = document.getElementById('receiptLoadingWrap');
+    const progEl   = document.getElementById('receiptProgress');
+    btn.disabled = true; loadWrap.style.display = '';
 
     const allResults = [];
     for (let i = 0; i < receiptFiles.length; i++) {
-        prog.textContent = `분석 중… (${i+1}/${receiptFiles.length})`;
+        progEl.textContent = `${i + 1} / ${receiptFiles.length} 분석 중…`;
         try {
             const f = receiptFiles[i].file;
             const base64 = f.type === 'application/pdf'
@@ -1305,93 +1301,92 @@ async function analyzeReceipts() {
 
             const data = await apiFetch('/api/messages', {
                 model: 'claude-sonnet-4-6',
-                max_tokens: 2048,
+                max_tokens: 1024,
                 system: RECEIPT_SYSTEM,
                 messages: [{ role: 'user', content: [
                     { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-                    { type: 'text', text: '이 의료비 영수증/세부내역서를 분석해주세요.' }
+                    { type: 'text', text: '이 의료비 영수증을 분석해주세요.' }
                 ]}]
             });
-            allResults.push(parseAPIJson(data));
+            const parsed = parseAPIJson(data);
+            if (parsed.error) {
+                _showReceiptError(parsed.error);
+            } else {
+                allResults.push(parsed);
+            }
         } catch (err) {
-            toast(`${receiptFiles[i].file.name}: ${err.message}`);
+            _showReceiptError(`${receiptFiles[i].file.name}: ${err.message}`);
         }
     }
 
-    prog.style.display = 'none'; btn.disabled = false;
+    loadWrap.style.display = 'none'; btn.disabled = false;
     if (!allResults.length) return;
 
     const merged = _mergeReceiptResults(allResults);
     _applyReceiptResults(merged);
-    _renderReceiptResultCard(allResults, merged);
+    _renderReceiptResultCard(merged);
+}
+
+function _showReceiptError(msg) {
+    document.getElementById('receiptResultWrap').innerHTML =
+        `<div class="rr-error">⚠️ ${msg}<br><span style="font-size:12px;color:#6b7280;margin-top:4px;display:block;">금액을 직접 입력하거나 다른 이미지를 시도해주세요.</span></div>`;
 }
 
 function _mergeReceiptResults(results) {
-    const m = {
-        hospitals: results.map(r => [r.hospital, r.hospital_grade ? `(${r.hospital_grade})` : ''].join('')).filter(Boolean),
-        hospital_grade: results[0]?.hospital_grade || '의원',
-        items: results.flatMap(r => r.items || []),
-        summary: { 보장대상_급여:0, 보장대상_비급여_일반:0, 보장대상_비급여_3종:0,
-                   총급여:0, 총비급여_일반:0, 총비급여_3종:0, 비보장금액:0 }
+    return {
+        hospitalName:  results.map(r => r.hospitalName).filter(Boolean).join(' / '),
+        hospitalGrade: results[0]?.hospitalGrade || '의원',
+        visitDate:     results[0]?.visitDate || '',
+        insuranceCovered:    results.reduce((s, r) => s + (r.insuranceCovered    || 0), 0),
+        nonInsuranceCovered: results.reduce((s, r) => s + (r.nonInsuranceCovered || 0), 0),
+        totalAmount:         results.reduce((s, r) => s + (r.totalAmount         || 0), 0),
+        items: results.flatMap(r => r.items || [])
     };
-    for (const r of results) {
-        const s = r.summary || {};
-        for (const k of Object.keys(m.summary)) m.summary[k] += (s[k] || 0);
-    }
-    return m;
 }
 
 function _applyReceiptResults(merged) {
+    // 병원 등급
     const gradeMap = { '의원':'의원', '병원':'병원', '종합병원':'종합병원', '상급종합병원':'종합병원' };
     const gradeEl = document.getElementById('silsonHospGrade');
-    if (gradeEl) gradeEl.value = gradeMap[merged.hospital_grade] || '의원';
+    if (gradeEl) gradeEl.value = gradeMap[merged.hospitalGrade] || '의원';
 
-    const s = merged.summary;
+    // 급여 본인부담금 → 실손 급여 필드
     const gupEl   = document.getElementById('silsonGup');
     const biGupEl = document.getElementById('silsonBiGup');
-    const jong3El = document.getElementById('silson3jong');
-
-    if (gupEl)   gupEl.value   = s.보장대상_급여 || '';
-    const biTotal = (s.보장대상_비급여_일반 || 0) + (s.보장대상_비급여_3종 || 0);
-    if (biGupEl) biGupEl.value = biTotal || '';
-    if (jong3El) jong3El.value = s.보장대상_비급여_3종 > 0 ? 'yes' : 'no';
+    if (gupEl)   gupEl.value   = merged.insuranceCovered    || '';
+    if (biGupEl) biGupEl.value = merged.nonInsuranceCovered || '';
 
     onSilsonChange();
-    toast('영수증 분석 완료! 금액이 자동 입력됐습니다.');
+    toast('영수증 인식 완료! 금액이 자동 입력됐습니다.');
 }
 
-function _renderReceiptResultCard(results, merged) {
+function _renderReceiptResultCard(merged) {
     const wrap = document.getElementById('receiptResultWrap');
-    const rows = merged.items.map(item => {
-        const icon = item.category === '비보장'
-            ? '<span class="rr-uncovered">❌</span>'
-            : item.category?.startsWith('비급여3종')
-                ? '<span class="rr-3jong">⚠️ 3종</span>'
-                : '<span class="rr-covered">✅</span>';
-        const sub = item.reason ? `<div style="font-size:10px;color:#94a3b8;">${item.reason}</div>` : '';
-        return `<tr>
-            <td>${item.name||''}${sub}</td>
-            <td style="text-align:right;">${item.급여 ? item.급여.toLocaleString() : '-'}</td>
-            <td style="text-align:right;">${item.비급여 ? item.비급여.toLocaleString() : '-'}</td>
-            <td style="text-align:center;">${icon}</td>
-        </tr>`;
+
+    const itemCards = (merged.items || []).map(item => {
+        const typeClass = item.type === '급여' ? 'rr-type-gup' : 'rr-type-bigup';
+        const typeLabel = item.type || '기타';
+        return `<div class="rr-item">
+            <span class="rr-item-name">${item.name || '-'}</span>
+            <span class="rr-item-type ${typeClass}">${typeLabel}</span>
+            <span class="rr-item-amt">${item.amount ? item.amount.toLocaleString() + '원' : '-'}</span>
+        </div>`;
     }).join('');
 
-    const s = merged.summary;
+    const metaParts = [merged.hospitalName, merged.visitDate].filter(Boolean).join(' · ');
+
     wrap.innerHTML = `<div class="receipt-result-card">
-        <div class="receipt-result-header">📋 영수증 인식 결과 &nbsp;<span style="font-weight:400;font-size:10px;color:var(--muted);">${merged.hospitals.join(' / ') || '-'}</span></div>
-        <div style="overflow-x:auto;">
-            <table class="rr-table">
-                <thead><tr><th>항목명</th><th style="text-align:right;">급여</th><th style="text-align:right;">비급여</th><th style="text-align:center;">보장</th></tr></thead>
-                <tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:14px;">항목을 인식하지 못했습니다</td></tr>'}</tbody>
-            </table>
+        <div class="rr-header">
+            📋 영수증 인식 결과
+            <span class="rr-meta">${metaParts}</span>
         </div>
-        <div class="receipt-summary">
-            비보장 제외 후 &nbsp;|&nbsp;
-            급여 <strong>${(s.보장대상_급여||0).toLocaleString()}원</strong> &nbsp;/&nbsp;
-            비급여 <strong>${(s.보장대상_비급여_일반||0).toLocaleString()}원</strong>
-            ${s.보장대상_비급여_3종 > 0 ? ` &nbsp;/&nbsp; 3종 <strong>${s.보장대상_비급여_3종.toLocaleString()}원</strong>` : ''}
-            ${s.비보장금액 > 0 ? `<br><span style="color:#b91c1c;">비보장 ${s.비보장금액.toLocaleString()}원 제외됨</span>` : ''}
+        <div class="rr-items">
+            ${itemCards || '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:12px;">항목을 인식하지 못했습니다</div>'}
+        </div>
+        <div class="rr-summary">
+            총 청구금액 <strong>${(merged.totalAmount||0).toLocaleString()}원</strong>
+            &nbsp;|&nbsp; 급여 본인부담 <strong>${(merged.insuranceCovered||0).toLocaleString()}원</strong>
+            &nbsp;|&nbsp; 비급여 <strong>${(merged.nonInsuranceCovered||0).toLocaleString()}원</strong>
         </div>
     </div>`;
 }
