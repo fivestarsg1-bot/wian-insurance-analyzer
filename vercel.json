@@ -1,5 +1,7 @@
 {
   "version": 2,
+  "buildCommand": "echo 'static site'",
+  "outputDirectory": "public",
   "headers": [
     {
       "source": "/(.*)",
@@ -11,18 +13,18 @@
     }
   ],
   "functions": {
-    "api/auth.js":       { "maxDuration": 10 },
-    "api/messages.js":   { "maxDuration": 60 },
-    "api/rag-upload.js": { "maxDuration": 60 },
-    "api/rag-search.js": { "maxDuration": 30 },
-    "api/rag-list.js":          { "maxDuration": 10 },
-    "api/rag-delete.js":        { "maxDuration": 10 },
-    "api/precedent-upload.js":  { "maxDuration": 60 },
-    "api/precedent-search.js":  { "maxDuration": 30 },
-    "api/precedent-list.js":    { "maxDuration": 10 },
-    "api/precedent-delete.js":  { "maxDuration": 10 },
-    "api/customers.js":  { "maxDuration": 10 },
-    "api/contracts.js":  { "maxDuration": 10 },
-    "api/claims.js":     { "maxDuration": 10 }
+    "api/auth.js":             { "maxDuration": 10 },
+    "api/messages.js":         { "maxDuration": 60 },
+    "api/rag-upload.js":       { "maxDuration": 60 },
+    "api/rag-search.js":       { "maxDuration": 30 },
+    "api/rag-list.js":         { "maxDuration": 10 },
+    "api/rag-delete.js":       { "maxDuration": 10 },
+    "api/precedent-upload.js": { "maxDuration": 60 },
+    "api/precedent-search.js": { "maxDuration": 30 },
+    "api/precedent-list.js":   { "maxDuration": 10 },
+    "api/precedent-delete.js": { "maxDuration": 10 },
+    "api/customers.js":        { "maxDuration": 10 },
+    "api/contracts.js":        { "maxDuration": 10 },
+    "api/claims.js":           { "maxDuration": 10 }
   }
 }
