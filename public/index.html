@@ -1357,6 +1357,17 @@ if (typeof pdfjsLib !== 'undefined') {
 let hasSurg = false, hasHosp = false, riderSeq = 0;
 let pdfExtracted = null;
 let rawPDFText   = null;
+// 고객 DB 연동 상태 (onSilsonChange에서 참조하므로 init() 이전에 선언)
+let _calcCustId   = null;
+let _calcCustName = null;
+let _custListLoaded = false;
+let _custCache = [];
+let _activeCustId = null;
+let _activeCovContractId = null;
+let _editCustId = null;
+let _editContractId = null;
+let _claimPrefill = null;
+let _custSelectCallback = null;
 
 // ════════════════════════════════════════════════════════════
 // 실손 세대별 보험금 계산
@@ -5289,10 +5300,6 @@ function switchMainTab(tab) {
 // ════════════════════════════════════════════════════════════
 // 고객 목록
 // ════════════════════════════════════════════════════════════
-let _custListLoaded = false;
-let _custCache = [];
-let _activeCustId = null;
-let _activeCovContractId = null; // 특약 추가 대상 계약 ID
 
 async function loadCustomers() {
     _custListLoaded = true;
@@ -5332,8 +5339,6 @@ function filterCustList(q) {
 // ════════════════════════════════════════════════════════════
 // 고객 생성/편집 모달
 // ════════════════════════════════════════════════════════════
-let _editCustId = null;
-
 function openCustForm(custOrNull) {
     _editCustId = custOrNull?.id || null;
     document.getElementById('custFormTitle').textContent = custOrNull ? '고객 정보 수정' : '새 고객 등록';
@@ -5496,8 +5501,6 @@ function toggleCoverage(btn) {
 // ════════════════════════════════════════════════════════════
 // 계약 추가 모달
 // ════════════════════════════════════════════════════════════
-let _editContractId = null;
-
 function openContractForm(contractOrNull) {
     _editContractId = contractOrNull?.id || null;
     document.getElementById('contractFormTitle').textContent = contractOrNull ? '계약 수정' : '계약 추가';
@@ -5610,8 +5613,6 @@ async function loadClaims() {
 // ════════════════════════════════════════════════════════════
 // 청구 추가 모달
 // ════════════════════════════════════════════════════════════
-let _claimPrefill = null;
-
 function openClaimForm(prefill) {
     _claimPrefill = prefill;
     document.getElementById('claimFormTitle').textContent = '청구 추가';
@@ -5726,8 +5727,6 @@ async function loadCoverageAnalysis() {
 // ════════════════════════════════════════════════════════════
 // 고객 선택 모달 (실손 계산기 연동)
 // ════════════════════════════════════════════════════════════
-let _custSelectCallback = null;
-
 async function openCustSelect(callback) {
     _custSelectCallback = callback;
     document.getElementById('custSelectSearch').value = '';
@@ -5762,9 +5761,6 @@ function pickCust(id, name, custObj) {
 }
 
 // ── 실손 계산기 고객 연동 ──────────────────────────────────
-let _calcCustId   = null;
-let _calcCustName = null;
-
 function openCustSelectForCalc() {
     openCustSelect(async (id, name, cust) => {
         _calcCustId   = id;
