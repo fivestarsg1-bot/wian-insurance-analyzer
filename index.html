@@ -212,6 +212,15 @@
         .section-sep { display:flex; align-items:center; gap:10px; margin:4px 0 14px; color:var(--muted); font-size:12px; }
         .section-sep::before, .section-sep::after { content:''; flex:1; height:1px; background:var(--border); }
 
+        /* ── 실손 계산 섹션 ── */
+        .silson-section { background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:var(--radius-sm); padding:16px; margin:14px 0 0; }
+        .silson-header { font-size:13px; font-weight:700; color:var(--text); margin-bottom:12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .gen-badge { font-size:11px; font-weight:700; padding:2px 10px; border-radius:20px; background:var(--primary-light); color:var(--primary); }
+        .gen-badge.muted { background:#f1f5f9; color:#94a3b8; }
+        .silson-result-box { background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:12px 14px; margin-top:8px; }
+        .silson-total { font-size:15px; font-weight:800; color:#15803d; margin-bottom:5px; }
+        .silson-detail { font-size:11px; color:#166534; line-height:1.8; }
+
         /* ── Print ── */
         @media print {
             .header, .api-btn, #analyzeBtn, #addRiderBtn, .action-bar, .rider-del, #loadingCard, #pdfCard { display:none!important; }
@@ -357,6 +366,46 @@
                 <input type="number" class="form-control" id="hospDays" placeholder="예: 14" min="1" max="365">
             </div>
         </div>
+        <!-- 실손 의료비 계산 -->
+        <div class="silson-section">
+            <div class="silson-header">
+                💊 실손 의료비 예상 계산
+                <span class="gen-badge muted" id="silsonGenBadge">실손특약 미감지</span>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">급여 의료비 (원)</label>
+                    <input type="number" class="form-control" id="silsonGup" placeholder="0" min="0" oninput="onSilsonChange()">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">비급여 의료비 (원)</label>
+                    <input type="number" class="form-control" id="silsonBiGup" placeholder="0" min="0" oninput="onSilsonChange()">
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:10px;">
+                <div class="form-group" style="margin-bottom:0;" id="silsonGradeWrap">
+                    <label class="form-label">병원 등급</label>
+                    <select class="form-control" id="silsonHospGrade" onchange="onSilsonChange()">
+                        <option value="의원">의원</option>
+                        <option value="병원">병원</option>
+                        <option value="종합병원">종합병원</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;display:none;" id="silsonSubtypeWrap">
+                    <label class="form-label">상품 유형</label>
+                    <select class="form-control" id="silsonSubtype" onchange="onSilsonChange()"></select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">비급여 3종</label>
+                    <select class="form-control" id="silson3jong" onchange="onSilsonChange()">
+                        <option value="no">일반 비급여</option>
+                        <option value="yes">3종 해당 (도수·주사·MRI)</option>
+                    </select>
+                </div>
+            </div>
+            <div id="silsonResult" style="display:none;"></div>
+        </div>
+
         <div class="form-group">
             <label class="form-label">기타 치료 내용 <span style="font-weight:400;text-transform:none;">(선택)</span></label>
             <textarea class="form-control" id="otherTx" rows="2" placeholder="예: 항암치료 6사이클 예정 / 방사선치료 3주 / 재활치료 중 / 인공관절 삽입 등"></textarea>
@@ -449,6 +498,178 @@ let hasSurg = false, hasHosp = false, riderSeq = 0;
 let pdfExtracted = null; // { insurer, product, policy_start_date, riders:[], extraction_note }
 
 // ════════════════════════════════════════════════════════════
+// 실손 세대 감지 & 보험금 계산
+// ════════════════════════════════════════════════════════════
+function detectSilsonGeneration(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    const ym = d.getFullYear() * 100 + (d.getMonth() + 1);
+    if (ym < 200910) return '1세대';
+    if (ym <= 201703) return '2세대';
+    if (ym <= 202106) return '3세대';
+    return '4세대';
+}
+
+function getSilsonRider() {
+    return getRiders().find(r => /실손|실비|의료비|상해의료|질병의료/i.test(r.rider));
+}
+
+const SILSON_GRADE_DEDUCT = { '의원': 10000, '병원': 15000, '종합병원': 20000 };
+
+function calcSilsonBenefit() {
+    const rider = getSilsonRider();
+    if (!rider?.startDate) return null;
+    const gen = detectSilsonGeneration(rider.startDate);
+    if (!gen) return null;
+
+    const isHosp = hasHosp;
+    const grade  = document.getElementById('silsonHospGrade')?.value || '의원';
+    const gd     = SILSON_GRADE_DEDUCT[grade] || 10000;
+    const is3jong = document.getElementById('silson3jong')?.value === 'yes';
+    const gup    = parseFloat(document.getElementById('silsonGup')?.value)   || 0;
+    const biGup  = parseFloat(document.getElementById('silsonBiGup')?.value) || 0;
+    const subtype = document.getElementById('silsonSubtype')?.value || '';
+
+    let details = [], total = 0;
+
+    if (gen === '1세대') {
+        // 1세대: 급여/비급여 구분 없이 80% 보장 (일반 기준)
+        total = (gup + biGup) * 0.8;
+        details.push(`의료비 합계 ${(gup+biGup).toLocaleString()}원 × 80% = ${Math.round(total).toLocaleString()}원`);
+
+    } else if (gen === '2세대') {
+        // 급여 90%, 비급여: 80%(기본) or 90%(단일형)
+        const bRate = subtype === '단일90' ? 0.9 : 0.8;
+        const gBen  = gup * 0.9;
+        const bBen  = biGup * bRate;
+        if (!isHosp) {
+            // 통원: 비율 적용 합산 후 병원급 공제
+            total = Math.max(0, gBen + bBen - gd);
+            if (gup > 0)   details.push(`급여 ${gup.toLocaleString()}원 × 90% = ${Math.round(gBen).toLocaleString()}원`);
+            if (biGup > 0) details.push(`비급여 ${biGup.toLocaleString()}원 × ${Math.round(bRate*100)}% = ${Math.round(bBen).toLocaleString()}원`);
+            details.push(`병원급 공제 −${gd.toLocaleString()}원 → ${Math.round(total).toLocaleString()}원`);
+        } else {
+            // 입원: 병원급 공제 없음, 한도 5천만원
+            total = Math.min(50000000, gBen + bBen);
+            if (gup > 0)   details.push(`급여 ${gup.toLocaleString()}원 × 90% = ${Math.round(gBen).toLocaleString()}원`);
+            if (biGup > 0) details.push(`비급여 ${biGup.toLocaleString()}원 × ${Math.round(bRate*100)}% = ${Math.round(bBen).toLocaleString()}원`);
+            if (gBen + bBen > 50000000) details.push('입원 한도 5,000만원 적용');
+        }
+
+    } else if (gen === '3세대') {
+        const isSlim = subtype === '실속형';
+        const gRate  = isSlim ? 0.9 : 0.8; // 실속형 급여 10% 공제, 표준형 20% 공제
+        if (!isHosp) {
+            if (is3jong && biGup > 0) {
+                // 비급여 3종: 2만원 공제 + 30% 자기부담
+                const jong3 = Math.max(0, biGup - 20000) * 0.7;
+                const gBen  = Math.max(0, gup * gRate - gd);
+                total = gBen + jong3;
+                if (gup > 0)   details.push(`급여 ${gup.toLocaleString()}원 × ${Math.round(gRate*100)}% − 병원급 공제 ${gd.toLocaleString()}원 = ${Math.round(gBen).toLocaleString()}원`);
+                details.push(`비급여 3종 (${biGup.toLocaleString()}원 − 20,000원) × 70% = ${Math.round(jong3).toLocaleString()}원`);
+            } else {
+                const gBen = gup * gRate;
+                const bBen = biGup * 0.8;
+                total = Math.max(0, gBen + bBen - gd);
+                if (gup > 0)   details.push(`급여 ${gup.toLocaleString()}원 × ${Math.round(gRate*100)}% = ${Math.round(gBen).toLocaleString()}원`);
+                if (biGup > 0) details.push(`비급여 ${biGup.toLocaleString()}원 × 80% = ${Math.round(bBen).toLocaleString()}원`);
+                details.push(`병원급 공제 −${gd.toLocaleString()}원 → ${Math.round(total).toLocaleString()}원`);
+            }
+        } else {
+            // 입원
+            const gBen = gup * gRate;
+            const bBen = biGup * 0.8;
+            total = gBen + bBen;
+            if (gup > 0)   details.push(`급여 ${gup.toLocaleString()}원 × ${Math.round(gRate*100)}% = ${Math.round(gBen).toLocaleString()}원`);
+            if (biGup > 0) details.push(`비급여 ${biGup.toLocaleString()}원 × 80% = ${Math.round(bBen).toLocaleString()}원`);
+        }
+
+    } else if (gen === '4세대') {
+        if (!isHosp) {
+            let gBen = 0, bBen = 0, jong3 = 0;
+            if (gup > 0) {
+                gBen = Math.max(0, gup * 0.8 - gd);
+                details.push(`급여 ${gup.toLocaleString()}원 × 80% − 병원급 공제 ${gd.toLocaleString()}원 = ${Math.round(gBen).toLocaleString()}원`);
+            }
+            if (biGup > 0) {
+                if (is3jong) {
+                    jong3 = Math.max(0, biGup - 30000) * 0.7;
+                    details.push(`비급여 3종 (${biGup.toLocaleString()}원 − 30,000원) × 70% = ${Math.round(jong3).toLocaleString()}원`);
+                } else {
+                    bBen = Math.max(0, biGup * 0.7 - gd);
+                    details.push(`비급여 ${biGup.toLocaleString()}원 × 70% − 병원급 공제 ${gd.toLocaleString()}원 = ${Math.round(bBen).toLocaleString()}원`);
+                }
+            }
+            const raw = gBen + bBen + jong3;
+            total = Math.min(200000, raw);
+            if (raw > 200000) details.push('통원 한도 200,000원 적용');
+        } else {
+            // 입원: 급여 80%, 비급여 70%
+            const gBen = gup * 0.8;
+            const bBen = biGup * 0.7;
+            total = gBen + bBen;
+            if (gup > 0)   details.push(`급여 ${gup.toLocaleString()}원 × 80% = ${Math.round(gBen).toLocaleString()}원`);
+            if (biGup > 0) details.push(`비급여 ${biGup.toLocaleString()}원 × 70% = ${Math.round(bBen).toLocaleString()}원`);
+        }
+    }
+
+    return { gen, total: Math.max(0, Math.round(total)), details, isHosp, grade };
+}
+
+function onSilsonChange() {
+    const gup   = parseFloat(document.getElementById('silsonGup')?.value)   || 0;
+    const biGup = parseFloat(document.getElementById('silsonBiGup')?.value) || 0;
+    const resultEl = document.getElementById('silsonResult');
+    // 입원 시 병원급 공제 숨기기
+    const gradeWrap = document.getElementById('silsonGradeWrap');
+    if (gradeWrap) gradeWrap.style.display = hasHosp ? 'none' : '';
+
+    if (gup + biGup === 0) { resultEl.style.display = 'none'; return; }
+    const result = calcSilsonBenefit();
+    if (!result) { resultEl.style.display = 'none'; return; }
+
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `<div class="silson-result-box">
+        <div class="silson-total">예상 실손 보험금: ${result.total.toLocaleString()}원</div>
+        <div class="silson-detail">${result.details.join('<br>')}</div>
+    </div>`;
+}
+
+function updateSilsonGenBadge() {
+    const rider = getSilsonRider();
+    const badge = document.getElementById('silsonGenBadge');
+    const subtypeWrap = document.getElementById('silsonSubtypeWrap');
+    const subtypeSel  = document.getElementById('silsonSubtype');
+    if (!badge) return;
+
+    if (!rider?.startDate) {
+        badge.textContent = '실손특약 미감지';
+        badge.className = 'gen-badge muted';
+        subtypeWrap.style.display = 'none';
+        return;
+    }
+
+    const gen = detectSilsonGeneration(rider.startDate);
+    badge.textContent = gen || '세대 불명';
+    badge.className = 'gen-badge';
+
+    if (gen === '2세대') {
+        subtypeWrap.style.display = '';
+        subtypeSel.innerHTML =
+            '<option value="급여90비급여80">급여90%/비급여80% (일반)</option>' +
+            '<option value="단일90">90% 단일형</option>';
+    } else if (gen === '3세대') {
+        subtypeWrap.style.display = '';
+        subtypeSel.innerHTML =
+            '<option value="표준형">표준형 (급여 20% 공제)</option>' +
+            '<option value="실속형">실속형 (급여 10% 공제)</option>';
+    } else {
+        subtypeWrap.style.display = 'none';
+    }
+    onSilsonChange();
+}
+
+// ════════════════════════════════════════════════════════════
 // Settings
 // ════════════════════════════════════════════════════════════
 function openSettings() {
@@ -534,6 +755,7 @@ function setHosp(v) {
     document.getElementById('hospYes').classList.toggle('active', v);
     document.getElementById('hospNo').classList.toggle('active', !v);
     document.getElementById('hospDaysField').classList.toggle('show', v);
+    onSilsonChange();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -573,7 +795,7 @@ function addRider(prefill = {}) {
         </div>
         <div class="form-group" style="margin-bottom:0;">
             <label class="form-label">가입일자</label>
-            <input type="date" class="form-control" data-f="startDate" value="${esc(prefill.startDate||'')}">
+            <input type="date" class="form-control" data-f="startDate" value="${esc(prefill.startDate||'')}" onchange="updateSilsonGenBadge()">
         </div>`;
     wrap.appendChild(div);
     refreshRiderBadge();
@@ -854,6 +1076,20 @@ async function analyze() {
     const surgText = hasSurg ? `수술 있음 / 수술명: ${document.getElementById('surgName').value.trim()||'미입력'}` : '수술 없음';
     const hospText = hasHosp ? `입원 / 입원일수: ${document.getElementById('hospDays').value||'미입력'}일` : '외래·통원 치료';
 
+    // 실손 계산
+    const silsonCalc = calcSilsonBenefit();
+    const silsonGup   = parseFloat(document.getElementById('silsonGup')?.value)   || 0;
+    const silsonBiGup = parseFloat(document.getElementById('silsonBiGup')?.value) || 0;
+    const silsonLines = silsonCalc && (silsonGup + silsonBiGup > 0)
+        ? `\n[실손 의료비 정보]\n` +
+          `실손 세대: ${silsonCalc.gen}\n` +
+          `급여 의료비: ${silsonGup.toLocaleString()}원 / 비급여 의료비: ${silsonBiGup.toLocaleString()}원\n` +
+          (hasHosp ? '' : `병원 등급: ${document.getElementById('silsonHospGrade')?.value||'의원'}\n`) +
+          (document.getElementById('silson3jong')?.value === 'yes' ? '비급여 3종(도수·주사·MRI) 해당\n' : '') +
+          `세대별 공제 적용 후 예상 실손 보험금: ${silsonCalc.total.toLocaleString()}원\n` +
+          `계산 근거: ${silsonCalc.details.join(' / ')}`
+        : '';
+
     const userPrompt =
 `[기준일: ${today}]
 
@@ -865,7 +1101,7 @@ ${riderLines}
 수술: ${surgText}
 입원: ${hospText}
 기타 치료: ${document.getElementById('otherTx').value.trim()||'없음'}
-사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}
+사고 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${silsonLines}
 
 위 내용을 분석하여 아래 JSON 형식으로만 응답하세요.`;
 
@@ -879,7 +1115,7 @@ ${riderLines}
 4. 감액기간: 가입 1~2년 이내 50% 감액 적용 여부
 5. 상해보험: 급격성·우연성·외래성 3요소 충족 판단
 6. 직접원인 요건, 의학적 필요성, 입원 적정성 적용
-7. 실손의료비: 자기부담금(급여 20%, 비급여 30%) 반영
+7. 실손의료비: 가입 세대별 자기부담금 적용 — 1세대(80%보장), 2세대(급여90%/비급여80% 또는 단일90%), 3세대 표준형(급여80%/비급여80%), 3세대 실속형(급여90%/비급여80%), 4세대(급여80%/비급여70%+등급공제). 실손 세대·예상 보험금이 [실손 의료비 정보]로 제공된 경우 해당 값을 rider_analysis에 반영할 것
 
 반드시 다음 JSON 구조만 반환 (코드 블록 없이 순수 JSON):
 {
@@ -1035,6 +1271,7 @@ function resetAll() {
 function init() {
     addRider();
     updateNavBtn();
+    updateSilsonGenBadge();
     if (!localStorage.getItem('api_key')) setTimeout(openSettings, 600);
 }
 init();
