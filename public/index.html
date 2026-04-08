@@ -772,6 +772,12 @@
     </div>
 </header>
 
+<!-- 메인 탭 네비게이션 — 헤더 바로 아래 -->
+<div class="main-tabs" id="mainTabNav">
+    <button class="main-tab-btn active" id="mainTabAnalysis" onclick="switchMainTab('analysis')">🔍 분석 도구</button>
+    <button class="main-tab-btn" id="mainTabCustomers" onclick="switchMainTab('customers')">👤 고객 관리</button>
+</div>
+
 <main class="container">
 
     <!-- ═══ 분석 도구 페이지 ═══ -->
@@ -1350,11 +1356,6 @@
 </main>
 </div><!-- /#appContent -->
 
-<!-- 메인 탭 네비게이션 — appContent 바깥, showApp()에서 명시적으로 표시 -->
-<div class="main-tabs" id="mainTabNav" style="display:none;">
-    <button class="main-tab-btn active" id="mainTabAnalysis" onclick="switchMainTab('analysis')">🔍 분석 도구</button>
-    <button class="main-tab-btn" id="mainTabCustomers" onclick="switchMainTab('customers')">👤 고객 관리</button>
-</div>
 
 <div id="toast"></div>
 
@@ -2023,14 +2024,12 @@ function logout() {
 function showGate() {
     document.getElementById('passwordGate').style.display = 'flex';
     document.getElementById('appContent').style.display   = 'none';
-    document.getElementById('mainTabNav').style.display   = 'none';
     document.getElementById('pwInput').focus();
 }
 
 function showApp() {
     document.getElementById('passwordGate').style.display = 'none';
     document.getElementById('appContent').style.display   = 'block';
-    document.getElementById('mainTabNav').style.display   = 'flex';
 }
 
 function togglePwVis() {
