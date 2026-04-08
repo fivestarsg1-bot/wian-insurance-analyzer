@@ -1,5 +1,15 @@
 {
   "version": 2,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Pragma",        "value": "no-cache" },
+        { "key": "Expires",       "value": "0" }
+      ]
+    }
+  ],
   "functions": {
     "api/auth.js":       { "maxDuration": 10 },
     "api/messages.js":   { "maxDuration": 60 },
