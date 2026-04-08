@@ -22,9 +22,6 @@
     "api/precedent-upload.js": { "maxDuration": 60 },
     "api/precedent-search.js": { "maxDuration": 30 },
     "api/precedent-list.js":   { "maxDuration": 10 },
-    "api/precedent-delete.js": { "maxDuration": 10 },
-    "api/customers.js":        { "maxDuration": 10 },
-    "api/contracts.js":        { "maxDuration": 10 },
-    "api/claims.js":           { "maxDuration": 10 }
+    "api/precedent-delete.js": { "maxDuration": 10 }
   }
 }
