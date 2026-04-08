@@ -1231,7 +1231,7 @@ function _refreshReceiptUI() {
     }
 }
 
-async function _resizeImageToBase64(file, maxPx = 1800) {
+async function _resizeImageToBase64(file, maxPx = 1600) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         const url = URL.createObjectURL(file);
@@ -1245,7 +1245,7 @@ async function _resizeImageToBase64(file, maxPx = 1800) {
             const canvas = document.createElement('canvas');
             canvas.width = w; canvas.height = h;
             canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL('image/jpeg', 0.88).split(',')[1]);
+            resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
         };
         img.onerror = reject;
         img.src = url;
@@ -1265,17 +1265,27 @@ async function _pdfFirstPageToBase64(file) {
 
 const RECEIPT_SYSTEM = `당신은 병원 영수증 분석 전문가입니다. 영수증 이미지에서 다음 항목을 JSON으로 추출하세요.
 이미지가 영수증이 아닌 경우 {"error":"영수증이 아닙니다"} 만 반환하세요.
+이미지가 회전되어 있거나 기울어져 있어도 텍스트를 최대한 읽어내세요. 이미지 방향에 관계없이 모든 텍스트를 분석하세요.
+
+[금액 추출 규칙]
+- insuranceCovered: 영수증의 "급여 본인부담" 또는 "본인일부부담금" 항목만 추출. 건강보험공단 부담금(공단부담금)은 절대 포함하지 말 것.
+- nonInsuranceCovered: 비급여 항목 합계 (환자 전액부담)
+- totalAmount: 환자가 실제 납부한 총액 (공단부담금 제외)
+
+[항목 분류 규칙]
+- "제증명료", "서류발급비", "진단서", "소견서", "증명서" 등 서류 관련 항목 → name: "제증명료"로 통일
+- "치료재료대"는 실제 치료에 사용된 재료에만 사용 (서류 발급 비용에 사용 금지)
 
 반드시 순수 JSON만 반환 (마크다운·설명 없이):
 {
-  "totalAmount": 총 청구금액(숫자),
-  "insuranceCovered": 급여 본인부담금(숫자),
-  "nonInsuranceCovered": 비급여 본인부담금(숫자),
+  "totalAmount": 환자납부총액(숫자),
+  "insuranceCovered": 급여본인부담금만(숫자),
+  "nonInsuranceCovered": 비급여합계(숫자),
   "hospitalName": "병원명",
   "hospitalGrade": "의원|병원|종합병원|상급종합병원",
   "visitDate": "YYYY-MM-DD",
   "items": [
-    { "name": "항목명", "amount": 금액(숫자), "type": "급여|비급여" }
+    { "name": "표준항목명", "originalName": "영수증원본항목명", "amount": 금액(숫자), "type": "급여|비급여" }
   ]
 }
 금액은 원 단위 숫자만. 항목이 없거나 읽을 수 없으면 0 또는 null.`;
@@ -1299,23 +1309,42 @@ async function analyzeReceipts() {
                 ? await _pdfFirstPageToBase64(f)
                 : await _resizeImageToBase64(f);
 
-            const data = await apiFetch('/api/messages', {
-                model: 'claude-sonnet-4-6',
-                max_tokens: 1024,
-                system: RECEIPT_SYSTEM,
-                messages: [{ role: 'user', content: [
-                    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-                    { type: 'text', text: '이 의료비 영수증을 분석해주세요.' }
-                ]}]
-            });
-            const parsed = parseAPIJson(data);
+            const controller = new AbortController();
+            const timeoutId  = setTimeout(() => controller.abort(), 90000);
+            let res;
+            try {
+                res = await fetch('/api/messages', {
+                    method: 'POST',
+                    signal: controller.signal,
+                    headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
+                    body: JSON.stringify({
+                        model: 'claude-sonnet-4-6',
+                        max_tokens: 1500,
+                        system: RECEIPT_SYSTEM,
+                        messages: [{ role: 'user', content: [
+                            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+                            { type: 'text', text: '이 의료비 영수증을 분석해주세요.' }
+                        ]}]
+                    })
+                });
+            } finally {
+                clearTimeout(timeoutId);
+            }
+
+            if (res.status === 401) { sessionStorage.removeItem('access_token'); showGate(); throw new Error('세션 만료'); }
+            if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || `HTTP ${res.status}`); }
+
+            const parsed = parseAPIJson(await res.json());
             if (parsed.error) {
                 _showReceiptError(parsed.error);
             } else {
                 allResults.push(parsed);
             }
         } catch (err) {
-            _showReceiptError(`${receiptFiles[i].file.name}: ${err.message}`);
+            const msg = err.name === 'AbortError'
+                ? '분석 시간이 초과됐어요. 이미지를 더 밝게 찍거나 파일 크기를 줄여서 다시 시도해보세요.'
+                : `${receiptFiles[i].file.name}: ${err.message}`;
+            _showReceiptError(msg);
         }
     }
 
@@ -1366,8 +1395,10 @@ function _renderReceiptResultCard(merged) {
     const itemCards = (merged.items || []).map(item => {
         const typeClass = item.type === '급여' ? 'rr-type-gup' : 'rr-type-bigup';
         const typeLabel = item.type || '기타';
+        const origSub   = item.originalName && item.originalName !== item.name
+            ? `<span style="font-size:10px;color:#94a3b8;margin-left:4px;">(${item.originalName})</span>` : '';
         return `<div class="rr-item">
-            <span class="rr-item-name">${item.name || '-'}</span>
+            <span class="rr-item-name">${item.name || '-'}${origSub}</span>
             <span class="rr-item-type ${typeClass}">${typeLabel}</span>
             <span class="rr-item-amt">${item.amount ? item.amount.toLocaleString() + '원' : '-'}</span>
         </div>`;
