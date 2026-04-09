@@ -4419,11 +4419,24 @@ async function analyze() {
             result.total_description = fmtAmount(result.total_estimated);
         }
 
+        // ── rider_analysis 중복 제거 (동일 rider_name 첫 항목만 유지) ────
+        {
+            const seen = new Set();
+            result.rider_analysis = (result.rider_analysis || []).filter(ra => {
+                const key = (ra.rider_name || '').replace(/\s/g, '');
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        }
+
         // ── 치료 유형 기반 후처리 — LLM이 놓친 경우 강제 보정 ────────
         {
-            const DAILY_RE   = /입원\s*일당/;
-            const HOSP_RE    = /입원\s*(의료비|실손)|실손\s*입원/;
-            const OUTPAT_RE  = /통원\s*(의료비|실손)|외래\s*(의료비|진료비)|실손\s*통원/;
+            // 입원 관련 패턴 (외래 케이스에서 보장제한)
+            const DAILY_RE   = /입원\s*일당|입원\s*급여/;
+            const HOSP_RE    = /(질병|상해)?\s*입원\s*(의료비|비용|실손|급부|비)|실손\s*입원|^입원비$|입원\s*특약/;
+            // 외래/통원 관련 패턴 (입원 케이스에서 보장제한)
+            const OUTPAT_RE  = /통원\s*(의료비|실손|비용)|외래\s*(의료비|진료비|실손)|실손\s*통원/;
             const SURG_RE    = /(질병|상해)?\s*[1-5]?\s*종?\s*수술비|(종|1종|2종|3종|4종|5종)\s*수술/;
 
             // 질병 케이스 여부: 사고 경위 미입력 → 질병
@@ -4508,15 +4521,25 @@ async function analyze() {
                 }
 
                 if (!hasHosp) {
-                    // 외래/통원: 입원일당 및 입원의료비 해당 없음
+                    // 외래/통원: 입원 관련 특약 강제 보장제한
                     if (DAILY_RE.test(nm) || HOSP_RE.test(nm)) {
                         ra.estimated_amount   = 0;
                         ra.final_amount       = 0;
                         ra.coverage_status    = '보장제한';
                         ra.amount_description = '외래/통원 치료 (미해당)';
-                        ra.reason             = '입원하지 않아 입원급부 적용 불가';
+                        ra.reason             = '외래/통원 케이스 — 입원 특약 해당 없음';
                     }
-                } else if (hospNoDays) {
+                } else {
+                    // 입원: 외래/통원 전용 특약 강제 보장제한
+                    if (OUTPAT_RE.test(nm) && !DAILY_RE.test(nm) && !HOSP_RE.test(nm)) {
+                        ra.estimated_amount   = 0;
+                        ra.final_amount       = 0;
+                        ra.coverage_status    = '보장제한';
+                        ra.amount_description = '입원 치료 (미해당)';
+                        ra.reason             = '입원 케이스 — 외래 전용 특약 해당 없음';
+                    }
+                }
+                if (hospNoDays) {
                     // 입원 선택 + 일수 미입력: 입원일당만 미계산 처리
                     if (DAILY_RE.test(nm)) {
                         ra.estimated_amount   = 0;
