@@ -4824,7 +4824,7 @@ async function searchCasesInOrder(diagnosis, surgery) {
                 const precData = await precRes.json();
                 const chunks = precData.chunks || [];
                 if (chunks.length > 0) {
-                    _renderPrecedentResults(chunks, keyword);
+                    renderPrecedentResults(chunks, keyword);
                     return;
                 }
             }
@@ -4837,7 +4837,7 @@ async function searchCasesInOrder(diagnosis, surgery) {
         if (fssRes.ok) {
             const fssData = await fssRes.json();
             if (fssData.cases && fssData.cases.length > 0) {
-                _renderFssCases(fssData.cases, fssKeyword);
+                renderFssCases(fssData.cases, fssKeyword);
                 return;
             }
         }
@@ -4856,7 +4856,46 @@ async function searchCasesInOrder(diagnosis, surgery) {
     </div>`;
 }
 
-function _renderPrecedentResults(chunks, keyword) {
+async function searchKnowledgeDB(diagnosis, surgery) {
+    const keyword = [diagnosis, surgery].filter(Boolean).join(' ').trim();
+    if (!keyword) return;
+    const el = document.getElementById('knowledgeSearchResult');
+    if (!el) return;
+    el.style.display = 'block';
+    const badgeEl = document.getElementById('knowledgeKeywordBadge');
+    if (badgeEl) badgeEl.textContent = keyword;
+    const listEl = document.getElementById('knowledgeChunkList');
+    if (!listEl) return;
+    listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">📋 약관 검색 중...</div>';
+    try {
+        const r = await fetch('/api/rag-search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
+            body: JSON.stringify({ query: keyword, top_k: 2 })
+        });
+        if (!r.ok) throw new Error('검색 실패');
+        const d = await r.json();
+        const chunks = d.chunks || [];
+        if (chunks.length > 0) {
+            listEl.innerHTML = chunks.map(c => `
+                <div style="padding:10px;background:#f0fff4;border-left:3px solid #16a34a;border-radius:4px;margin-bottom:8px;">
+                    <div style="font-size:11px;color:#16a34a;font-weight:600;margin-bottom:4px;">
+                        📄 ${c.doc_name || '약관'}
+                    </div>
+                    <div style="font-size:12px;color:#374151;line-height:1.6;">
+                        ${(c.chunk_text || '').substring(0, 200)}…
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">관련 약관을 찾지 못했습니다.</div>';
+        }
+    } catch (e) {
+        listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;">약관 검색 오류</div>';
+    }
+}
+
+function renderPrecedentResults(chunks, keyword) {
     const listEl  = document.getElementById('fssCaseList');
     const moreEl  = document.getElementById('fssMoreLink');
     if (moreEl) moreEl.style.display = 'none';
@@ -4870,7 +4909,7 @@ function _renderPrecedentResults(chunks, keyword) {
         `).join('');
 }
 
-function _renderFssCases(cases, keyword) {
+function renderFssCases(cases, keyword) {
     const listEl = document.getElementById('fssCaseList');
     const moreEl = document.getElementById('fssMoreLink');
     if (moreEl) {
