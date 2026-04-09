@@ -5,15 +5,26 @@ module.exports = async (req, res) => {
   const { keyword } = req.query;
   if (!keyword) return res.status(400).json({ error: 'keyword required' });
 
-  try {
-    const url = `https://www.fss.or.kr/fss/job/fncCnflCase/list.do?menuNo=201195&searchKeyword=${encodeURIComponent(keyword)}&pageIndex=1`;
+  // 검색 결과 페이지 URL (더보기 링크용)
+  const searchUrl = `https://www.fss.or.kr/fss/job/fncCnflCase/list.do?menuNo=201195&searchWrd=${encodeURIComponent(keyword)}&pageIndex=1`;
 
-    const response = await fetch(url, {
+  try {
+    // 금감원은 POST + searchWrd 파라미터로만 필터링 동작
+    const response = await fetch('https://www.fss.or.kr/fss/job/fncCnflCase/list.do', {
+      method: 'POST',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; InsuranceAnalyzer/1.0)',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
         'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'ko-KR,ko;q=0.9'
-      }
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+        'Referer': 'https://www.fss.or.kr/fss/job/fncCnflCase/list.do?menuNo=201195'
+      },
+      body: new URLSearchParams({
+        menuNo: '201195',
+        searchWrd: keyword,
+        searchCnd: '1',
+        pageIndex: '1'
+      }).toString()
     });
 
     const html = await response.text();
@@ -21,9 +32,8 @@ module.exports = async (req, res) => {
 
     // tbody 내 tr 행 추출
     const tbodyMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/);
-    const tbody = tbodyMatch ? tbodyMatch[1] : html;
+    const tbody = tbodyMatch ? tbodyMatch[1] : '';
 
-    // 각 행에서 제목 링크(./view.do)와 날짜 추출
     const rowPattern = /<tr>([\s\S]*?)<\/tr>/gi;
     let rowMatch;
     while ((rowMatch = rowPattern.exec(tbody)) !== null) {
@@ -34,7 +44,6 @@ module.exports = async (req, res) => {
 
       const href  = linkMatch[1].replace(/&amp;/g, '&');
       const title = linkMatch[2].trim();
-      // 날짜: YYYY-MM-DD 형태의 td
       const dateMatch = row.match(/(\d{4}-\d{2}-\d{2})/);
 
       cases.push({
@@ -52,7 +61,7 @@ module.exports = async (req, res) => {
       keyword,
       total: unique.length,
       cases: unique,
-      searchUrl: url
+      searchUrl
     });
 
   } catch (err) {
