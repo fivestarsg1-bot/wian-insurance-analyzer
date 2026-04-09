@@ -4223,7 +4223,7 @@ function _buildCustSurgCovCtx(contracts) {
 }
 
 // 분석 도구에서 현재 고객 활성화 (보장분석 탭 → 분석 도구 연동)
-function openAnalysisWithCust() {
+async function openAnalysisWithCust() {
     if (!_activeCustId) return;
     _calcCustId   = _activeCustId;
     _calcCustName = document.getElementById('custDetailName').textContent;
@@ -4233,6 +4233,21 @@ function openAnalysisWithCust() {
     document.getElementById('silsonCustLabel').textContent    = `👤 ${_calcCustName}`;
     document.getElementById('silsonSaveClaimBtn').style.display = '';
     toast(`👤 ${_calcCustName} 님이 분석 도구에 연결됐습니다.`);
+    // 실손세대 자동 적용
+    try {
+        const rows = await dbProxy('GET', 'insurance_contracts', {
+            filter: `customer_id=eq.${_activeCustId}&select=id,silson_generation&order=contract_date.desc`,
+        }) || [];
+        const gen = rows.find(r => r.silson_generation)?.silson_generation || null;
+        if (gen) {
+            const genSel   = document.getElementById('silsonGen');
+            const riderRow = document.getElementById('silson4RiderRow');
+            const badge    = document.getElementById('silsonGenBadge');
+            if (genSel && Array.from(genSel.options).some(o => o.value === gen)) genSel.value = gen;
+            if (riderRow) riderRow.style.display = gen === '4세대' ? '' : 'none';
+            if (badge) { badge.textContent = `✓ ${gen} 자동감지됨`; badge.className = 'gen-badge'; }
+        }
+    } catch(e) { console.warn('실손세대 자동감지 실패:', e.message); }
 }
 
 // 수술 DB 검색 결과를 프롬프트 텍스트로 변환
@@ -6193,14 +6208,17 @@ function openCustSelectForCalc() {
         // 실손세대 자동 적용 (세대 드롭다운만 변경 — 영수증 금액 재계산 없음)
         try {
             const rows = await dbProxy('GET', 'insurance_contracts', {
-                filter: `customer_id=eq.${id}&select=id,silson_generation&order=created_at.desc`,
+                filter: `customer_id=eq.${id}&select=id,silson_generation&order=contract_date.desc`,
             }) || [];
             const gen = rows.find(r => r.silson_generation)?.silson_generation || null;
             if (gen) {
-                const genSel  = document.getElementById('silsonGen');
+                const genSel   = document.getElementById('silsonGen');
                 const riderRow = document.getElementById('silson4RiderRow');
-                const badge   = document.getElementById('silsonGenBadge');
-                if (genSel) genSel.value = gen;
+                const badge    = document.getElementById('silsonGenBadge');
+                // option value가 gen과 정확히 일치하는지 확인 후 설정
+                if (genSel && Array.from(genSel.options).some(o => o.value === gen)) {
+                    genSel.value = gen;
+                }
                 if (riderRow) riderRow.style.display = gen === '4세대' ? '' : 'none';
                 if (badge) { badge.textContent = `✓ ${gen} 자동감지됨`; badge.className = 'gen-badge'; }
             }
