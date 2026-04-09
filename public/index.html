@@ -4884,22 +4884,17 @@ async function searchKnowledgeDB(diagnosis, surgery) {
     const mainKw = (diagnosis || keyword).split(' ')[0];
     const _extLinks = (kw) => `
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
-            <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">📎 약관 원문 찾기:</div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📎 약관 원문 찾기:</div>
             <div style="display:flex;flex-direction:column;gap:4px;">
+                <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122"
+                   target="_blank" rel="noopener"
+                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
+                    📑 금감원 표준약관 <span style="font-size:10px;color:#94a3b8;">→ '${kw}' 검색</span>
+                </a>
                 <a href="https://www.kidi.or.kr"
                    target="_blank" rel="noopener"
                    style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
                     🏛️ 보험개발원 공시실 <span style="font-size:10px;color:#94a3b8;">→ '${kw}' 검색</span>
-                </a>
-                <a href="https://www.klia.or.kr"
-                   target="_blank" rel="noopener"
-                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                    🏢 생명보험협회 <span style="font-size:10px;color:#94a3b8;">→ 약관 메뉴에서 '${kw}' 검색</span>
-                </a>
-                <a href="https://www.knia.or.kr/consumer/clauses/list"
-                   target="_blank" rel="noopener"
-                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                    🏢 손해보험협회 약관 목록 <span style="font-size:10px;color:#94a3b8;">→ '${kw}' 검색</span>
                 </a>
             </div>
         </div>`;
@@ -4982,6 +4977,37 @@ function renderGapSection(gaps) {
     return `<div class="gap-section"><div class="gap-title-bar">📌 추가 가입 권유 <span style="font-size:12px;font-weight:400;color:#92400e;">(${items.length}개 항목)</span></div>${rows}</div>`;
 }
 
+const _INSURER_LINKS = [
+    ['삼성화재', '삼성화재', 'https://www.samsungfire.com/serviceCenter/clause/clause.do'],
+    ['삼성생명', '삼성생명', 'https://www.samsunglife.com/individual/info/contract/clause/listClauses.do'],
+    ['삼성',    '삼성생명', 'https://www.samsunglife.com/individual/info/contract/clause/listClauses.do'],
+    ['한화손보', '한화손해보험', 'https://www.hwgeneralins.com/customer/provision/provision.do'],
+    ['한화생명', '한화생명', 'https://www.hanwhalife.com/consumer/cs/clause/clause_list.do'],
+    ['한화',    '한화생명', 'https://www.hanwhalife.com/consumer/cs/clause/clause_list.do'],
+    ['현대해상', '현대해상', 'https://www.hi.co.kr/consumer/info/clause/list.do'],
+    ['메리츠',  '메리츠화재', 'https://www.meritzfire.com/customer/policy/list.do'],
+    ['KB손보',  'KB손해보험', 'https://www.kbinsure.co.kr/CG302120001.ec'],
+    ['KB생명',  'KB생명', 'https://www.kblife.co.kr/customer/service/contractClause.do'],
+    ['KB',      'KB손해보험', 'https://www.kbinsure.co.kr/CG302120001.ec'],
+    ['DB',      'DB손해보험', 'https://www.idbins.com/fmcs/fmcs040100.do'],
+    ['롯데',    '롯데손해보험', 'https://www.lotteins.co.kr/html/consumer/clause/list.do'],
+    ['흥국',    '흥국화재', 'https://www.heungkukfire.co.kr/webcs/cscenter/clause/clauseList.do'],
+    ['교보',    '교보생명', 'https://www.kyobo.co.kr/main/customer/service/clause'],
+    ['신한',    '신한라이프', 'https://www.shinhanlife.co.kr/hp/cmf/cust/ClauseSearch.do'],
+    ['동양',    '동양생명', 'https://www.myangel.co.kr/service/contract/clause/list.do'],
+    ['라이나',  '라이나생명', 'https://www.lina.co.kr/customer/policy_list.asp'],
+    ['미래에셋', '미래에셋생명', 'https://life.miraeasset.com/customer/clause/list.do'],
+    ['푸본현대', '푸본현대생명', 'https://www.fubonhyundai.com/customer/clause/list.do'],
+];
+
+function _matchInsurerLink(insurer, product) {
+    const s = (insurer + ' ' + product).trim();
+    for (const [key, name, url] of _INSURER_LINKS) {
+        if (s.includes(key)) return { name, url };
+    }
+    return null;
+}
+
 async function loadPolicyChunk(btn) {
     const resultDiv = btn.nextElementSibling;
     if (!resultDiv) return;  // null 안전장치
@@ -4989,6 +5015,7 @@ async function loadPolicyChunk(btn) {
     const riderName  = btn.dataset.rider   || '';
     const product    = btn.dataset.product || '';
     const insurer    = btn.dataset.insurer || '';
+    const _ins       = _matchInsurerLink(insurer, product);
 
     // 토글: 열려 있으면 닫기
     if (resultDiv.style.display !== 'none') {
@@ -5013,44 +5040,21 @@ async function loadPolicyChunk(btn) {
         const chunks = data.chunks || [];
 
         if (chunks.length === 0) {
-            const insurerMap = {
-                '삼성': '삼성생명', '한화': '한화생명', '교보': '교보생명',
-                '메리츠': '메리츠화재', 'KB': 'KB손해보험', '현대해상': '현대해상',
-                '흥국': '흥국화재', 'DB': 'DB손해보험', '롯데': '롯데손해보험',
-                '신한': '신한라이프', '동양': '동양생명', '라이나': '라이나생명',
-                '푸본현대': '푸본현대생명'
-            };
-            let insurerName = '';
-            for (const [key, val] of Object.entries(insurerMap)) {
-                if (product && product.includes(key)) { insurerName = val; break; }
-            }
-
-            const kidiUrl    = `https://www.kidi.or.kr`;
-            const lifeUrl    = `https://www.klia.or.kr`;
-            const nonlifeUrl = `https://www.knia.or.kr/consumer/clauses/list`;
-
             resultDiv.innerHTML = `
                 <div style="padding:10px;background:#fffbf0;border-left:3px solid #f59e0b;border-radius:4px;margin-top:8px;">
                     <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:8px;">
                         📋 내부 DB에 약관이 없습니다. 아래에서 확인하세요:
                     </div>
-                    ${insurerName ? `<div style="font-size:12px;color:#555;margin-bottom:6px;">보험사: <strong>${insurerName}</strong></div>` : ''}
+                    ${_ins ? `<div style="font-size:12px;color:#555;margin-bottom:6px;">보험사: <strong>${_ins.name}</strong></div>` : ''}
                     <div style="display:flex;flex-direction:column;gap:6px;">
-                        <a href="${kidiUrl}" target="_blank" rel="noopener"
-                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                            🏛️ 보험개발원 공시실 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
-                        </a>
-                        <a href="${lifeUrl}" target="_blank" rel="noopener"
-                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                            🏢 생명보험협회 <span style="font-size:10px;color:#94a3b8;">→ 약관 메뉴에서 '${riderName}' 검색</span>
-                        </a>
-                        <a href="${nonlifeUrl}" target="_blank" rel="noopener"
-                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                            🏢 손해보험협회 약관 목록 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
-                        </a>
+                        ${_ins ? `
+                        <a href="${_ins.url}" target="_blank" rel="noopener"
+                           style="font-size:12px;color:#fff;background:#0064FF;text-decoration:none;padding:7px 10px;border-radius:6px;display:flex;align-items:center;gap:6px;font-weight:600;">
+                            🔗 ${_ins.name} 약관 페이지 바로가기
+                        </a>` : ''}
                         <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122" target="_blank" rel="noopener"
                            style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                            📑 금감원 표준약관 보기
+                            📑 금감원 표준약관 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
                         </a>
                     </div>
                     <div style="font-size:11px;color:#999;margin-top:8px;">
@@ -5063,22 +5067,16 @@ async function loadPolicyChunk(btn) {
 
         const extLinksHtml = `
             <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
-                <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">📎 약관 원문 찾기:</div>
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📎 약관 원문:</div>
                 <div style="display:flex;flex-direction:column;gap:4px;">
-                    <a href="https://www.kidi.or.kr"
-                       target="_blank" rel="noopener"
+                    ${_ins ? `
+                    <a href="${_ins.url}" target="_blank" rel="noopener"
+                       style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #0064FF;border-radius:6px;text-decoration:none;font-weight:600;">
+                        🔗 ${_ins.name} 약관 페이지 바로가기
+                    </a>` : ''}
+                    <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122" target="_blank" rel="noopener"
                        style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                        🏛️ 보험개발원 공시실 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
-                    </a>
-                    <a href="https://www.klia.or.kr"
-                       target="_blank" rel="noopener"
-                       style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                        🏢 생명보험협회 <span style="font-size:10px;color:#94a3b8;">→ 약관 메뉴에서 '${riderName}' 검색</span>
-                    </a>
-                    <a href="https://www.knia.or.kr/consumer/clauses/list"
-                       target="_blank" rel="noopener"
-                       style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                        🏢 손해보험협회 약관 목록 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
+                        📑 금감원 표준약관 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
                     </a>
                 </div>
             </div>`;
