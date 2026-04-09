@@ -4702,6 +4702,17 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
                     <div class="ra-body-row"><div class="ra-body-label">판정 근거</div><div class="ra-body-text">${ra.reason||'-'}</div></div>
                     ${(ra.final_amount>0||ra.amount_description)&&!isLim?`<div class="ra-body-row"><div class="ra-body-label">예상 금액</div><div class="ra-body-text" style="font-weight:700;color:var(--primary);">${amtText}${isExcluded?' <span style="font-size:10px;color:var(--muted);font-weight:400;">(합산 제외)</span>':''}</div></div>`:''}
                     ${ra.reduction_rate>0?`<div class="ra-body-row"><div class="ra-body-label">감액 적용</div><div class="ra-body-text">감액 ${Math.round(ra.reduction_rate*100)}% 적용</div></div>`:''}
+                    <div style="margin-top:8px;border-top:1px solid #f0f0f0;padding-top:8px;">
+                        <button class="policy-chunk-btn"
+                            data-rider="${(ra.rider_name||'').replace(/"/g,'&quot;')}"
+                            data-product="${(orig.product||'').replace(/"/g,'&quot;')}"
+                            data-insurer="${(orig.insurer||'').replace(/"/g,'&quot;')}"
+                            onclick="loadPolicyChunk(this)"
+                            style="font-size:11px;color:#0064FF;background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">
+                            📄 약관 조항 보기
+                        </button>
+                        <div class="policy-chunk-result" style="display:none;margin-top:6px;"></div>
+                    </div>
                 </div>
             </div>`;
         }).join('');
@@ -4882,6 +4893,111 @@ function renderGapSection(gaps) {
             </div>
         </div>`).join('');
     return `<div class="gap-section"><div class="gap-title-bar">📌 추가 가입 권유 <span style="font-size:12px;font-weight:400;color:#92400e;">(${items.length}개 항목)</span></div>${rows}</div>`;
+}
+
+async function loadPolicyChunk(btn) {
+    const resultDiv = btn.nextElementSibling;
+    const riderName  = btn.dataset.rider   || '';
+    const product    = btn.dataset.product || '';
+    const insurer    = btn.dataset.insurer || '';
+
+    // 토글: 열려 있으면 닫기
+    if (resultDiv.style.display !== 'none') {
+        resultDiv.style.display = 'none';
+        btn.innerHTML = '📄 약관 조항 보기';
+        return;
+    }
+
+    btn.innerHTML = '⏳ 검색 중…';
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">약관 검색 중...</div>';
+
+    try {
+        const query = [riderName, product, insurer].filter(Boolean).join(' ');
+        const res = await fetch('/api/rag-search', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
+            body:    JSON.stringify({ query, top_k: 2 })
+        });
+        if (!res.ok) throw new Error('검색 실패');
+        const data   = await res.json();
+        const chunks = data.chunks || [];
+
+        if (chunks.length === 0) {
+            // 보험사명 추출
+            const insurerMap = {
+                '삼성':'삼성생명','한화':'한화생명','교보':'교보생명',
+                'KB':'KB손해보험','현대해상':'현대해상','메리츠':'메리츠화재',
+                '흥국':'흥국화재','DB':'DB손해보험','롯데':'롯데손해보험',
+                '신한':'신한라이프','동양':'동양생명','라이나':'라이나생명',
+                '푸본현대':'푸본현대생명'
+            };
+            let insurerName = insurer;
+            if (!insurerName) {
+                for (const [key, val] of Object.entries(insurerMap)) {
+                    if (product.includes(key)) { insurerName = val; break; }
+                }
+            }
+
+            const encRider   = encodeURIComponent(riderName);
+            const encProduct = encodeURIComponent(product || riderName);
+            const kidiUrl    = `https://www.kidi.or.kr/user/nd63895.do?View&uQ=&pageST=SUBJECT&pageSV=${encRider}&pageSO=DESC&page=1`;
+            const lifeUrl    = `https://www.klia.or.kr/consumer/policy/policyList.do?searchWord=${encProduct}`;
+            const nonlifeUrl = `https://www.knia.or.kr/consumer/clauses/search?searchKeyword=${encProduct}`;
+
+            resultDiv.innerHTML = `
+                <div style="padding:10px;background:#fffbf0;border-left:3px solid #f59e0b;border-radius:4px;">
+                    <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:8px;">
+                        📋 내부 DB에 약관이 없습니다. 아래에서 확인하세요:
+                    </div>
+                    ${insurerName ? `<div style="font-size:12px;color:#555;margin-bottom:6px;">보험사: <strong>${insurerName}</strong></div>` : ''}
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                        <a href="${kidiUrl}" target="_blank" rel="noopener"
+                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
+                            🏛️ 보험개발원 약관 공시실에서 찾기
+                        </a>
+                        <a href="${lifeUrl}" target="_blank" rel="noopener"
+                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
+                            🏢 생명보험협회 약관 검색
+                        </a>
+                        <a href="${nonlifeUrl}" target="_blank" rel="noopener"
+                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
+                            🏢 손해보험협회 약관 검색
+                        </a>
+                        <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122" target="_blank" rel="noopener"
+                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
+                            📑 금감원 표준약관 보기
+                        </a>
+                    </div>
+                    <div style="font-size:11px;color:#999;margin-top:8px;">
+                        💡 해당 약관을 PDF로 저장 후 약관DB에 추가하면 다음부터 자동으로 표시됩니다.
+                    </div>
+                </div>`;
+            btn.innerHTML = '📋 외부 약관 링크 ▲ 접기';
+            return;
+        }
+
+        resultDiv.innerHTML = chunks.map(c => {
+            const text = c.chunk_text || '';
+            const preview  = text.substring(0, 300);
+            const overflow = text.length > 300 ? text.substring(300) : '';
+            return `
+                <div style="margin-top:6px;padding:10px;background:#f8faff;border-left:3px solid #0064FF;border-radius:4px;">
+                    <div style="font-size:11px;color:#0064FF;font-weight:600;margin-bottom:4px;">📄 ${c.doc_name || '약관'}</div>
+                    <div style="font-size:12px;color:#374151;line-height:1.7;">
+                        ${preview}${overflow ? `
+                        <span class="chunk-more" style="display:none;">${overflow}</span>
+                        <button onclick="this.previousElementSibling.style.display='inline';this.style.display='none';"
+                            style="font-size:11px;color:#0064FF;background:none;border:none;cursor:pointer;">…더 보기</button>` : ''}
+                    </div>
+                </div>`;
+        }).join('');
+        btn.innerHTML = '📄 약관 조항 ▲ 접기';
+
+    } catch (e) {
+        resultDiv.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">약관 검색 중 오류 발생</div>';
+        btn.innerHTML = '📄 약관 조항 보기';
+    }
 }
 
 function renderPrecedentSection(chunks) {
