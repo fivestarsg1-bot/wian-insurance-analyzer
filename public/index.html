@@ -4293,40 +4293,41 @@ async function analyze() {
     if (_calcCustId) {
         try {
             custContracts = await dbFetch(`/api/contracts?customer_id=${_calcCustId}`);
-            // skipList: riders가 전부 DB 합성으로 변환될 경우 [특약 목록]과 중복 방지
-            // 직접 입력 riders가 있으면 DB 목록 전체를 배경 정보로 표시
-            const willAllBeDb = !riders.length && custContracts.length > 0;
-            custDbCtx = _formatCustContractsCtx(custContracts, _calcCustName, willAllBeDb);
         } catch(e) { console.warn('고객 DB 로드 실패:', e.message); }
-        // 직접 입력된 특약이 없으면 DB 특약을 합성 riders로 변환
-        if (!riders.length && custContracts.length) {
+
+        const dbCovFlat = custContracts.flatMap(c =>
+            (c.coverage || []).filter(cv => cv.is_active !== false)
+        );
+
+        if (dbCovFlat.length > 0) {
+            // DB 특약이 있으면 DB만 사용 — 직접 입력 특약 완전 무시
             let seq = 0;
             riders = custContracts.flatMap(c =>
                 (c.coverage || []).filter(cv => cv.is_active !== false).map(cv => ({
-                    idx:      ++seq,
-                    insurer:  c.insurer   || '',
-                    product:  c.product_name || '',
-                    rider:    cv.coverage_name || '',
-                    amount:   cv.coverage_amount ? formatCoverageAmount(cv.coverage_amount) : '',
-                    startDate: c.contract_date || '',
-                    category: cv.category || '',
-                    _source:  'db',
+                    idx:       ++seq,
+                    insurer:   c.insurer        || '',
+                    product:   c.product_name   || '',
+                    rider:     cv.coverage_name || '',
+                    amount:    cv.coverage_amount ? formatCoverageAmount(cv.coverage_amount) : '',
+                    startDate: c.contract_date  || '',
+                    category:  cv.category      || '',
+                    _source:   'db',
                 }))
             );
+            custDbCtx = _formatCustContractsCtx(custContracts, _calcCustName, true); // skipList=true
+        } else {
+            // DB에 특약 없으면 직접 입력 특약 사용
             if (!riders.length) {
                 alert('선택한 고객의 등록된 특약이 없습니다. 보유보험 탭에서 특약을 먼저 등록해주세요.');
                 return;
             }
-        } else if (riders.length && custContracts.length) {
-            // 직접입력 riders 중 DB 특약과 이름이 겹치는 항목 제거 (중복 방지)
-            const dbNames = custContracts
-                .flatMap(c => (c.coverage || []).filter(cv => cv.is_active !== false))
-                .map(cv => cv.coverage_name);
-            riders = riders.filter(r =>
-                !dbNames.some(n => n.includes(r.rider) || r.rider.includes(n))
-            );
         }
     }
+
+    // ── 입원/외래 구분 컨텍스트 ────────────────────────────────
+    const treatTypeCtx = hasHosp
+        ? '\n[진료 형태 안내] 입원 케이스. 외래·통원 전용 특약(통원의료비 등)은 이번 청구 대상이 아님. 입원 관련 특약만 분석할 것.'
+        : '\n[진료 형태 안내] 외래/통원 케이스. 입원 관련 특약(질병입원일당, 상해입원 등)은 이번 청구 대상이 아님. 외래·통원 관련 특약만 분석할 것.';
 
     const rag       = await buildRAGContext(diagnosis, riders);
     const prec      = await buildPrecedentContext(diagnosis, riders);
@@ -4337,6 +4338,11 @@ async function analyze() {
     // 고객 DB 수술비 특약 컨텍스트 (수술 케이스 + 고객 선택 시)
     const custSurgCtx = (hasSurg && custContracts.length)
         ? _buildCustSurgCovCtx(custContracts) : '';
+
+    // 수술 종 분류 기준 컨텍스트 (수술 케이스일 때만)
+    const surgClassCtx = hasSurg && surgName
+        ? `\n※ 수술 종 분류 기준 (반드시 준수):\n 1종: 내시경절제술, 폴립절제술, 대장용종절제술, 점막절제술, 조직검사\n 2종: 충수절제술(맹장), 치핵수술, 단순봉합\n 3종: 복강경 담낭절제술, 자궁근종적출, 관절경 수술, 골절수술\n 4종: 개복 위절제술, 척추수술, 관절치환술\n 5종: 심장수술, 뇌수술, 장기이식\n 입력된 수술명 '${surgName}'을 위 기준으로 정확히 분류할 것. 절대로 최대 종이나 최고 금액으로 가정하지 말 것.`
+        : '';
 
     // 실손 계산
     const silsonCalc  = calcSilsonBenefit();
@@ -4350,7 +4356,7 @@ async function analyze() {
         : '';
 
     // 공통 컨텍스트 (모든 배치에서 재사용)
-    const baseCtx = `${custDbCtx}[기준일: ${today}]\n[진단·치료]\n진단명: ${diagnosis} / 수술: ${surgText} / 입원: ${hospText}\n기타: ${document.getElementById('otherTx').value.trim()||'없음'} / 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${surgCtx}${custSurgCtx}${surgDBCtx}${rag.text}${prec.text}${silsonCtx}`;
+    const baseCtx = `${custDbCtx}[기준일: ${today}]\n[진단·치료]\n진단명: ${diagnosis} / 수술: ${surgText} / 입원: ${hospText}\n기타: ${document.getElementById('otherTx').value.trim()||'없음'} / 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${treatTypeCtx}${surgCtx}${surgClassCtx}${custSurgCtx}${surgDBCtx}${rag.text}${prec.text}${silsonCtx}`;
 
     // 배치 분할
     const batches = [];
