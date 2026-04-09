@@ -4886,20 +4886,20 @@ async function searchKnowledgeDB(diagnosis, surgery) {
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
             <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">📎 약관 원문 찾기:</div>
             <div style="display:flex;flex-direction:column;gap:4px;">
-                <a href="https://www.kidi.or.kr/user/nd63895.do?View&uQ=&pageST=SUBJECT&pageSV=${encodeURIComponent(kw)}&pageSO=DESC&page=1"
+                <a href="https://www.kidi.or.kr/user/nd63895.do?menuId=MENU00569"
                    target="_blank" rel="noopener"
                    style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                    🏛️ 보험개발원 공시실에서 찾기
+                    🏛️ 보험개발원 공시실 <span style="font-size:10px;color:#94a3b8;">→ '${kw}' 검색</span>
                 </a>
-                <a href="https://www.klia.or.kr/consumer/policy/policyList.do?searchWord=${encodeURIComponent(kw)}"
+                <a href="https://www.klia.or.kr"
                    target="_blank" rel="noopener"
                    style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                    🏢 생명보험협회 약관 검색
+                    🏢 생명보험협회 <span style="font-size:10px;color:#94a3b8;">→ 약관 메뉴에서 '${kw}' 검색</span>
                 </a>
-                <a href="https://www.knia.or.kr/consumer/clauses/search?searchKeyword=${encodeURIComponent(kw)}"
+                <a href="https://www.knia.or.kr/consumer/clauses/list"
                    target="_blank" rel="noopener"
                    style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                    🏢 손해보험협회 약관 검색
+                    🏢 손해보험협회 약관 목록 <span style="font-size:10px;color:#94a3b8;">→ '${kw}' 검색</span>
                 </a>
             </div>
         </div>`;
@@ -5025,9 +5025,9 @@ async function loadPolicyChunk(btn) {
                 if (product && product.includes(key)) { insurerName = val; break; }
             }
 
-            const kidiUrl    = `https://www.kidi.or.kr/user/nd63895.do?View&uQ=&pageST=SUBJECT&pageSV=${encodeURIComponent(riderName)}&pageSO=DESC&page=1`;
-            const lifeUrl    = `https://www.klia.or.kr/consumer/policy/policyList.do?searchWord=${encodeURIComponent(product || riderName)}`;
-            const nonlifeUrl = `https://www.knia.or.kr/consumer/clauses/search?searchKeyword=${encodeURIComponent(product || riderName)}`;
+            const kidiUrl    = `https://www.kidi.or.kr/user/nd63895.do?menuId=MENU00569`;
+            const lifeUrl    = `https://www.klia.or.kr`;
+            const nonlifeUrl = `https://www.knia.or.kr/consumer/clauses/list`;
 
             resultDiv.innerHTML = `
                 <div style="padding:10px;background:#fffbf0;border-left:3px solid #f59e0b;border-radius:4px;margin-top:8px;">
@@ -5038,15 +5038,15 @@ async function loadPolicyChunk(btn) {
                     <div style="display:flex;flex-direction:column;gap:6px;">
                         <a href="${kidiUrl}" target="_blank" rel="noopener"
                            style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                            🏛️ 보험개발원 약관 공시실에서 찾기
+                            🏛️ 보험개발원 공시실 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
                         </a>
                         <a href="${lifeUrl}" target="_blank" rel="noopener"
                            style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                            🏢 생명보험협회 약관 검색
+                            🏢 생명보험협회 <span style="font-size:10px;color:#94a3b8;">→ 약관 메뉴에서 '${riderName}' 검색</span>
                         </a>
                         <a href="${nonlifeUrl}" target="_blank" rel="noopener"
                            style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                            🏢 손해보험협회 약관 검색
+                            🏢 손해보험협회 약관 목록 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
                         </a>
                         <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122" target="_blank" rel="noopener"
                            style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
@@ -5065,20 +5065,20 @@ async function loadPolicyChunk(btn) {
             <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
                 <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">📎 약관 원문 찾기:</div>
                 <div style="display:flex;flex-direction:column;gap:4px;">
-                    <a href="https://www.kidi.or.kr/user/nd63895.do?View&uQ=&pageST=SUBJECT&pageSV=${encodeURIComponent(riderName)}&pageSO=DESC&page=1"
+                    <a href="https://www.kidi.or.kr/user/nd63895.do?menuId=MENU00569"
                        target="_blank" rel="noopener"
                        style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                        🏛️ 보험개발원 공시실에서 찾기
+                        🏛️ 보험개발원 공시실 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
                     </a>
-                    <a href="https://www.klia.or.kr/consumer/policy/policyList.do?searchWord=${encodeURIComponent(product || riderName)}"
+                    <a href="https://www.klia.or.kr"
                        target="_blank" rel="noopener"
                        style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                        🏢 생명보험협회 약관 검색
+                        🏢 생명보험협회 <span style="font-size:10px;color:#94a3b8;">→ 약관 메뉴에서 '${riderName}' 검색</span>
                     </a>
-                    <a href="https://www.knia.or.kr/consumer/clauses/search?searchKeyword=${encodeURIComponent(product || riderName)}"
+                    <a href="https://www.knia.or.kr/consumer/clauses/list"
                        target="_blank" rel="noopener"
                        style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                        🏢 손해보험협회 약관 검색
+                        🏢 손해보험협회 약관 목록 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
                     </a>
                 </div>
             </div>`;
