@@ -1,12 +1,8 @@
 const { textToVector, supaFetch, readBody, sendJSON } = require('./_rag');
-const { validateToken } = require('./_token');
 
 module.exports = async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (req.method !== 'POST') return sendJSON(res, 405, { error: 'Method not allowed' });
-
-    const token = req.headers['x-access-token'];
-    if (!validateToken(token)) return sendJSON(res, 401, { error: '인증이 필요합니다.' });
 
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
         return sendJSON(res, 200, { chunks: [] });
