@@ -4881,29 +4881,52 @@ async function searchKnowledgeDB(diagnosis, surgery) {
     const listEl = document.getElementById('knowledgeChunkList');
     if (!listEl) return;
     listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">📋 약관 검색 중...</div>';
+    const mainKw = (diagnosis || keyword).split(' ')[0];
+    const _extLinks = (kw) => `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">📎 약관 원문 찾기:</div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+                <a href="https://www.kidi.or.kr/user/nd63895.do?View&uQ=&pageST=SUBJECT&pageSV=${encodeURIComponent(kw)}&pageSO=DESC&page=1"
+                   target="_blank" rel="noopener"
+                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
+                    🏛️ 보험개발원 공시실에서 찾기
+                </a>
+                <a href="https://www.klia.or.kr/consumer/policy/policyList.do?searchWord=${encodeURIComponent(kw)}"
+                   target="_blank" rel="noopener"
+                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
+                    🏢 생명보험협회 약관 검색
+                </a>
+                <a href="https://www.knia.or.kr/consumer/clauses/search?searchKeyword=${encodeURIComponent(kw)}"
+                   target="_blank" rel="noopener"
+                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
+                    🏢 손해보험협회 약관 검색
+                </a>
+            </div>
+        </div>`;
     try {
-        // api/db.js → Supabase REST ilike 텍스트 검색 (인증 불필요)
-        const mainKw = (diagnosis || keyword).split(' ')[0];
-        const filter = `chunk_text=ilike.*${mainKw}*&limit=3`;
-        const r = await fetch(`/api/db?table=policy_chunks&filter=${encodeURIComponent(filter)}`);
-        if (!r.ok) throw new Error('검색 실패');
-        const chunks = await r.json();
+        // 1차: doc_name ilike (관련성 높음)
+        let chunks = [];
+        const r1 = await fetch(`/api/db?table=policy_chunks&filter=${encodeURIComponent(`doc_name=ilike.*${mainKw}*&limit=3`)}`);
+        if (r1.ok) chunks = await r1.json();
+
+        // 2차: chunk_text ilike
+        if (!Array.isArray(chunks) || chunks.length === 0) {
+            const r2 = await fetch(`/api/db?table=policy_chunks&filter=${encodeURIComponent(`chunk_text=ilike.*${mainKw}*&limit=3`)}`);
+            if (r2.ok) chunks = await r2.json();
+        }
+
         if (Array.isArray(chunks) && chunks.length > 0) {
             listEl.innerHTML = chunks.map(c => `
                 <div style="padding:10px;background:#f0fff4;border-left:3px solid #16a34a;border-radius:4px;margin-bottom:8px;">
-                    <div style="font-size:11px;color:#16a34a;font-weight:600;margin-bottom:4px;">
-                        📄 ${c.doc_name || '약관'}
-                    </div>
-                    <div style="font-size:12px;color:#374151;line-height:1.6;">
-                        ${(c.chunk_text || '').substring(0, 200)}…
-                    </div>
+                    <div style="font-size:11px;color:#16a34a;font-weight:600;margin-bottom:4px;">📄 ${c.doc_name || '약관'}</div>
+                    <div style="font-size:12px;color:#374151;line-height:1.6;">${(c.chunk_text || '').substring(0, 200)}…</div>
                 </div>
-            `).join('');
+            `).join('') + _extLinks(mainKw);
         } else {
-            listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">관련 약관을 찾지 못했습니다.</div>';
+            listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">관련 약관을 찾지 못했습니다.</div>' + _extLinks(mainKw);
         }
     } catch (e) {
-        listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;">약관 검색 오류</div>';
+        listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;">약관 검색 오류</div>' + _extLinks(mainKw);
     }
 }
 
@@ -5038,6 +5061,27 @@ async function loadPolicyChunk(btn) {
             return;
         }
 
+        const extLinksHtml = `
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">📎 약관 원문 찾기:</div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <a href="https://www.kidi.or.kr/user/nd63895.do?View&uQ=&pageST=SUBJECT&pageSV=${encodeURIComponent(riderName)}&pageSO=DESC&page=1"
+                       target="_blank" rel="noopener"
+                       style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
+                        🏛️ 보험개발원 공시실에서 찾기
+                    </a>
+                    <a href="https://www.klia.or.kr/consumer/policy/policyList.do?searchWord=${encodeURIComponent(product || riderName)}"
+                       target="_blank" rel="noopener"
+                       style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
+                        🏢 생명보험협회 약관 검색
+                    </a>
+                    <a href="https://www.knia.or.kr/consumer/clauses/search?searchKeyword=${encodeURIComponent(product || riderName)}"
+                       target="_blank" rel="noopener"
+                       style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
+                        🏢 손해보험협회 약관 검색
+                    </a>
+                </div>
+            </div>`;
         resultDiv.innerHTML = chunks.map(c => {
             const text = c.chunk_text || '';
             const preview  = text.substring(0, 300);
@@ -5052,7 +5096,7 @@ async function loadPolicyChunk(btn) {
                             style="font-size:11px;color:#0064FF;background:none;border:none;cursor:pointer;">…더 보기</button>` : ''}
                     </div>
                 </div>`;
-        }).join('');
+        }).join('') + extLinksHtml;
         btn.innerHTML = '📄 약관 조항 ▲ 접기';
 
     } catch (e) {
