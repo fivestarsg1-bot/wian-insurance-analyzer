@@ -25,6 +25,10 @@ module.exports = async (req, res) => {
 
         sendJSON(res, 200, { chunks: Array.isArray(results) ? results : [] });
     } catch (err) {
+        // Supabase RPC 미존재(PGRST202) 등 DB 오류 → 빈 결과로 처리 (500 대신 200)
+        if (err.message && (err.message.includes('PGRST') || err.message.includes('404') || err.message.includes('does not exist'))) {
+            return sendJSON(res, 200, { chunks: [] });
+        }
         sendJSON(res, 500, { error: err.message });
     }
 };
