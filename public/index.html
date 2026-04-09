@@ -652,6 +652,23 @@
         .db-modal-close { background:none; border:none; font-size:20px; cursor:pointer; color:var(--muted); padding:0 4px; }
         .db-modal-footer { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
 
+        /* ── 계약 OCR 업로드 ── */
+        .ct-upload-zone { border:2px dashed #d0d5dd; border-radius:8px; padding:14px; text-align:center; cursor:pointer; transition:all .2s; margin-bottom:12px; background:#fafbfc; }
+        .ct-upload-zone:hover,.ct-upload-zone.drag-over { border-color:var(--primary); background:#f0f5ff; }
+        .ct-upload-zone .ct-upload-icon { font-size:20px; margin-bottom:3px; }
+        .ct-upload-zone .ct-upload-label { font-weight:600; font-size:13px; }
+        .ct-upload-zone .ct-upload-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+        .ct-cov-list { max-height:180px; overflow-y:auto; border:1px solid #e5e8eb; border-radius:8px; padding:4px 8px; }
+        .ct-cov-item { display:flex; align-items:center; gap:8px; padding:5px 2px; font-size:12px; border-bottom:1px solid #f1f3f5; }
+        .ct-cov-item:last-child { border-bottom:none; }
+        .ct-cov-item label { display:flex; align-items:center; gap:6px; cursor:pointer; width:100%; }
+        .ct-cov-cat { font-size:10px; background:#e8f4fd; color:#1565c0; border-radius:4px; padding:1px 5px; white-space:nowrap; flex-shrink:0; }
+        .ct-cov-amt { margin-left:auto; color:var(--muted); font-size:11px; white-space:nowrap; }
+        .ct-ocr-section { margin:10px 0 0; }
+        .ct-ocr-section-title { font-size:12px; font-weight:700; color:var(--dark); margin-bottom:6px; }
+        .ct-ocr-section-hint { font-size:11px; color:var(--muted); margin-top:4px; }
+        .ct-divider { border:none; border-top:1px solid #f1f3f5; margin:12px 0; }
+
         /* ── 인라인 빈 상태 ── */
         .db-empty { text-align:center; padding:24px 16px; color:var(--muted); font-size:13px; }
 
@@ -1221,6 +1238,30 @@
             <div class="db-modal-title">
                 <span id="contractFormTitle">계약 추가</span>
                 <button class="db-modal-close" onclick="closeContractForm()">✕</button>
+            </div>
+            <!-- OCR 업로드 영역 (계약 추가 시에만 표시) -->
+            <div id="ctOcrWrap">
+                <div class="ct-upload-zone" id="ctUploadZone"
+                     ondragover="event.preventDefault();this.classList.add('drag-over')"
+                     ondragleave="this.classList.remove('drag-over')"
+                     ondrop="ctHandleDrop(event)"
+                     onclick="document.getElementById('ctFileInput').click()">
+                    <input type="file" id="ctFileInput" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="ctHandleFile(this.files[0]);this.value=''">
+                    <div id="ctUploadMsg">
+                        <div class="ct-upload-icon">📎</div>
+                        <div class="ct-upload-label">보험증권 · 보장분석표 업로드</div>
+                        <div class="ct-upload-sub">PDF · JPG · PNG — 클릭하거나 드래그하면 특약 자동 추출</div>
+                    </div>
+                    <div id="ctUploadProgress" style="display:none;">
+                        <div style="font-size:13px;color:var(--primary);font-weight:600;" id="ctUploadProgressMsg">분석 중…</div>
+                    </div>
+                </div>
+                <div class="ct-ocr-section" id="ctOcrSection" style="display:none;">
+                    <div class="ct-ocr-section-title">추출된 특약 <span id="ctOcrCovCount"></span>건 — 저장할 항목 선택</div>
+                    <div class="ct-cov-list" id="ctOcrCovList"></div>
+                    <div class="ct-ocr-section-hint">체크된 특약만 함께 저장됩니다</div>
+                </div>
+                <hr class="ct-divider">
             </div>
             <div class="form-row">
                 <div class="form-group" style="margin-bottom:0;"><label class="form-label">보험사 *</label><input class="form-control" id="ctInsurer" placeholder="삼성화재"></div>
@@ -5639,28 +5680,162 @@ function openContractForm(contractOrNull) {
         if (el) el.value = contractOrNull?.[key] || '';
     });
     document.getElementById('ctStatus').value = contractOrNull?.status || '정상';
+    // OCR 영역: 추가 시만 표시, 수정 시 숨김
+    document.getElementById('ctOcrWrap').style.display = contractOrNull ? 'none' : '';
+    document.getElementById('ctUploadMsg').style.display = '';
+    document.getElementById('ctUploadProgress').style.display = 'none';
+    document.getElementById('ctOcrSection').style.display = 'none';
+    document.getElementById('ctUploadZone').classList.remove('drag-over');
     document.getElementById('contractFormModal').classList.add('open');
 }
 
 function closeContractForm() { document.getElementById('contractFormModal').classList.remove('open'); }
+
+// ════════════════════════════════════════════════════════════
+// 계약 모달 — OCR 특약 자동 추출
+// ════════════════════════════════════════════════════════════
+function ctHandleDrop(e) {
+    e.preventDefault();
+    document.getElementById('ctUploadZone').classList.remove('drag-over');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) ctHandleFile(file);
+}
+
+async function ctHandleFile(file) {
+    if (!file) return;
+    const isPDF = file.type === 'application/pdf';
+    const isImg = /^image\/(jpeg|jpg|png)/.test(file.type);
+    if (!isPDF && !isImg) { toast('PDF, JPG, PNG 파일만 지원합니다.'); return; }
+
+    const apiKey = localStorage.getItem('api_key');
+    if (!apiKey) { toast('API 키를 먼저 설정해주세요.'); return; }
+
+    const msgEl  = document.getElementById('ctUploadMsg');
+    const progEl = document.getElementById('ctUploadProgress');
+    const progMsgEl = document.getElementById('ctUploadProgressMsg');
+    msgEl.style.display  = 'none';
+    progEl.style.display = '';
+    progMsgEl.textContent = isPDF ? 'PDF 읽는 중…' : '이미지 분석 중…';
+
+    try {
+        let result;
+        if (isImg) {
+            result = await ctExtractFromImage(file, apiKey);
+        } else {
+            progMsgEl.textContent = 'PDF 텍스트 추출 중…';
+            const text = await ctExtractPDFText(file);
+            progMsgEl.textContent = 'AI 분석 중…';
+            result = await ctExtractFromText(text, apiKey);
+        }
+        ctApplyOcrResult(result);
+        progEl.style.display = 'none';
+        msgEl.style.display  = '';
+        document.getElementById('ctUploadMsg').querySelector('.ct-upload-label').textContent = '다른 파일로 재분석';
+    } catch(e) {
+        progEl.style.display = 'none';
+        msgEl.style.display  = '';
+        toast(`추출 오류: ${e.message}`);
+    }
+}
+
+async function ctExtractPDFText(file) {
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const pages = Math.min(pdf.numPages, 6);
+    let text = '';
+    for (let i = 1; i <= pages; i++) {
+        const content = await (await pdf.getPage(i)).getTextContent();
+        text += content.items.map(it => it.str).join(' ') + '\n';
+    }
+    return text;
+}
+
+const _CT_SYSTEM = `보험증권, 보장분석표, 보험 안내장에서 다음 JSON만 출력하세요 (다른 텍스트 절대 금지):
+{"insurer":"보험사명","product_name":"상품명","contract_date":"YYYY-MM-DD 또는 null","expiry_date":"YYYY-MM-DD 또는 null","insured_name":"피보험자 또는 null","policyholder":"계약자 또는 null","premium_monthly":월납보험료숫자또는null,"silson_generation":"1세대/2세대/3세대/4세대 또는 null","policy_number":"증권번호 또는 null","coverages":[{"category":"실비/수술비/진단비/입원비/사망/기타","coverage_name":"특약명","coverage_amount":보장금액숫자또는null}]}`;
+
+async function ctExtractFromImage(file, apiKey) {
+    if (file.size > 5 * 1024 * 1024) throw new Error('이미지는 5MB 이하여야 합니다.');
+    const base64 = await fileToBase64(file);
+    const mediaType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    const data = await apiFetch('/api/messages', {
+        model: 'claude-sonnet-4-20250514', max_tokens: 2000, system: _CT_SYSTEM,
+        messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text',  text: '이 보험 서류에서 계약 정보와 특약 목록을 추출해주세요.' }
+        ]}]
+    });
+    return parseAPIJson(data);
+}
+
+async function ctExtractFromText(text, apiKey) {
+    const trimmed = text.slice(0, 12000);
+    const data = await apiFetch('/api/messages', {
+        model: 'claude-sonnet-4-20250514', max_tokens: 2000, system: _CT_SYSTEM,
+        messages: [{ role: 'user', content: `다음 보험 서류 텍스트에서 계약 정보와 특약 목록을 추출해주세요:\n\n${trimmed}` }]
+    });
+    return parseAPIJson(data);
+}
+
+function ctApplyOcrResult(r) {
+    // 폼 자동 입력
+    if (r.insurer)           document.getElementById('ctInsurer').value      = r.insurer;
+    if (r.product_name)      document.getElementById('ctProduct').value      = r.product_name;
+    if (r.contract_date)     document.getElementById('ctContractDate').value = r.contract_date;
+    if (r.expiry_date)       document.getElementById('ctExpiryDate').value   = r.expiry_date;
+    if (r.policyholder)      document.getElementById('ctPolicyholder').value = r.policyholder;
+    if (r.insured_name)      document.getElementById('ctInsured').value      = r.insured_name;
+    if (r.premium_monthly)   document.getElementById('ctPremium').value      = r.premium_monthly;
+    if (r.policy_number)     document.getElementById('ctPolicyNum').value    = r.policy_number;
+    if (r.silson_generation) {
+        const sel = document.getElementById('ctSilsonGen');
+        if ([...sel.options].some(o => o.value === r.silson_generation)) sel.value = r.silson_generation;
+    }
+
+    // 특약 체크박스
+    const covs = r.coverages || [];
+    const section = document.getElementById('ctOcrSection');
+    if (!covs.length) { section.style.display = 'none'; return; }
+
+    document.getElementById('ctOcrCovCount').textContent = covs.length;
+    document.getElementById('ctOcrCovList').innerHTML = covs.map((cv, i) => {
+        const safeData = JSON.stringify({ category: cv.category || '기타', coverage_name: cv.coverage_name || '', coverage_amount: cv.coverage_amount || null, is_active: true }).replace(/"/g, '&quot;');
+        const amt = cv.coverage_amount ? cv.coverage_amount.toLocaleString() + '원' : '';
+        return `<div class="ct-cov-item">
+            <label>
+                <input type="checkbox" checked data-cov="${safeData}">
+                <span class="ct-cov-cat">${cv.category || '기타'}</span>
+                <span style="flex:1;">${cv.coverage_name || ''}</span>
+                <span class="ct-cov-amt">${amt}</span>
+            </label>
+        </div>`;
+    }).join('');
+    section.style.display = '';
+    toast(`특약 ${covs.length}건 추출 완료`);
+}
 
 async function submitContractForm() {
     const insurer = document.getElementById('ctInsurer').value.trim();
     const product = document.getElementById('ctProduct').value.trim();
     if (!insurer || !product) { toast('보험사와 상품명을 입력해주세요.'); return; }
     const body = {
-        customer_id:     _activeCustId,
+        customer_id:       _activeCustId,
         insurer,
-        product_name:    product,
-        contract_date:   document.getElementById('ctContractDate').value  || null,
-        expiry_date:     document.getElementById('ctExpiryDate').value    || null,
-        policyholder:    document.getElementById('ctPolicyholder').value  || null,
-        insured_name:    document.getElementById('ctInsured').value       || null,
-        premium_monthly: parseInt(document.getElementById('ctPremium').value) || null,
-        silson_generation: document.getElementById('ctSilsonGen').value   || null,
-        policy_number:   document.getElementById('ctPolicyNum').value     || null,
-        status:          document.getElementById('ctStatus').value,
+        product_name:      product,
+        contract_date:     document.getElementById('ctContractDate').value  || null,
+        expiry_date:       document.getElementById('ctExpiryDate').value    || null,
+        policyholder:      document.getElementById('ctPolicyholder').value  || null,
+        insured_name:      document.getElementById('ctInsured').value       || null,
+        premium_monthly:   parseInt(document.getElementById('ctPremium').value) || null,
+        silson_generation: document.getElementById('ctSilsonGen').value     || null,
+        policy_number:     document.getElementById('ctPolicyNum').value     || null,
+        status:            document.getElementById('ctStatus').value,
     };
+    // OCR로 추출된 특약 중 체크된 것만 포함
+    if (!_editContractId) {
+        const checked = Array.from(document.querySelectorAll('#ctOcrCovList input[type=checkbox]:checked'));
+        if (checked.length) {
+            body.coverage = checked.map(cb => JSON.parse(cb.dataset.cov));
+        }
+    }
     try {
         if (_editContractId) {
             await dbFetch(`/api/contracts?id=${_editContractId}`, { method: 'PUT', body });
@@ -5865,6 +6040,9 @@ async function openCustSelect(callback) {
 
 function closeCustSelect() { document.getElementById('custSelectModal').classList.remove('open'); }
 
+// 고객 선택 모달용 캐시 (JSON.stringify 인라인 onclick 깨짐 방지)
+let _custSelectMap = {};
+
 async function renderCustSelectList(q) {
     const el = document.getElementById('custSelectList');
     el.innerHTML = '<div class="db-empty">불러오는 중…</div>';
@@ -5872,7 +6050,9 @@ async function renderCustSelectList(q) {
         const url = q ? `/api/customers?q=${encodeURIComponent(q)}` : '/api/customers';
         const custs = await dbFetch(url);
         if (!custs.length) { el.innerHTML = '<div class="db-empty">검색 결과 없음</div>'; return; }
-        el.innerHTML = custs.map(c => `<div class="cust-pick-row" onclick="pickCust('${c.id}','${c.name}',${JSON.stringify(c).replace(/'/g,"\\'")})" >
+        _custSelectMap = {};
+        custs.forEach(c => { _custSelectMap[c.id] = c; });
+        el.innerHTML = custs.map(c => `<div class="cust-pick-row" onclick="pickCust('${c.id}')">
             <div class="cust-avatar" style="width:34px;height:34px;font-size:14px;">${c.name.slice(0,1)}</div>
             <div>
                 <div class="cust-pick-name">${c.name}</div>
@@ -5884,9 +6064,10 @@ async function renderCustSelectList(q) {
 
 function filterCustSelect(q) { renderCustSelectList(q); }
 
-function pickCust(id, name, custObj) {
+function pickCust(id) {
+    const c = _custSelectMap[id] || { id, name: id };
     closeCustSelect();
-    if (_custSelectCallback) _custSelectCallback(id, name, custObj);
+    if (_custSelectCallback) _custSelectCallback(c.id, c.name, c);
 }
 
 // ── 실손 계산기 고객 연동 ──────────────────────────────────
