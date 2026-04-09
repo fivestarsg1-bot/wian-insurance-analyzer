@@ -19,28 +19,33 @@ module.exports = async (req, res) => {
     const html = await response.text();
     const cases = [];
 
-    const rowPattern = /<tr[^>]*>[\s\S]*?<\/tr>/gi;
-    const rows = html.match(rowPattern) || [];
+    // tbody 내 tr 행 추출
+    const tbodyMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/);
+    const tbody = tbodyMatch ? tbodyMatch[1] : html;
 
-    for (const row of rows) {
-      const linkMatch = row.match(/href="([^"]*fncCnflCase[^"]*)"[^>]*>([^<]+)</);
-      const dateMatch = row.match(/(\d{4}[-\.]\d{2}[-\.]\d{2})/);
-      const caseNoMatch = row.match(/(\d{4}-\d+)/);
+    // 각 행에서 제목 링크(./view.do)와 날짜 추출
+    const rowPattern = /<tr>([\s\S]*?)<\/tr>/gi;
+    let rowMatch;
+    while ((rowMatch = rowPattern.exec(tbody)) !== null) {
+      const row = rowMatch[1];
+      // 제목 링크: href="./view.do?caseSlno=NNN&..."
+      const linkMatch = row.match(/href="(\.\/view\.do\?[^"]+)"[^>]*>\s*([^<]{3,})\s*<\/a>/);
+      if (!linkMatch) continue;
 
-      if (linkMatch) {
-        const href = linkMatch[1];
-        cases.push({
-          title: linkMatch[2].trim(),
-          url: href.startsWith('http') ? href : 'https://www.fss.or.kr' + href,
-          date: dateMatch ? dateMatch[1] : '',
-          caseNo: caseNoMatch ? caseNoMatch[1] : ''
-        });
-      }
+      const href  = linkMatch[1].replace(/&amp;/g, '&');
+      const title = linkMatch[2].trim();
+      // 날짜: YYYY-MM-DD 형태의 td
+      const dateMatch = row.match(/(\d{4}-\d{2}-\d{2})/);
+
+      cases.push({
+        title,
+        url: 'https://www.fss.or.kr/fss/job/fncCnflCase/' + href.replace(/^\.\//, ''),
+        date: dateMatch ? dateMatch[1] : ''
+      });
     }
 
     const unique = cases
       .filter((c, i) => cases.findIndex(x => x.title === c.title) === i)
-      .filter(c => c.title.length > 2)
       .slice(0, 5);
 
     res.json({

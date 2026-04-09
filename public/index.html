@@ -4570,9 +4570,9 @@ async function analyze() {
         setAnalysisProgress(98);
         clearInterval(stepTimer);
         renderResults(result, riders, rag.refs, prec.refs, prec.chunks);
-        // 금감원 분쟁조정사례 자동 검색
-        const fssKeyword = [diagnosis, hasSurg ? document.getElementById('surgName').value.trim() : ''].filter(Boolean).join(' ').trim();
-        searchFssCases(fssKeyword);
+        // 판례DB → 금감원 순서로 관련 사례 검색
+        const surgNameVal = hasSurg ? document.getElementById('surgName').value.trim() : '';
+        searchCasesInOrder(diagnosis, surgNameVal);
     } catch (err) {
         clearInterval(stepTimer);
         document.getElementById('resultsSection').innerHTML =
@@ -4786,45 +4786,85 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
     setTimeout(()=>document.getElementById('resultsSection').scrollIntoView({behavior:'smooth',block:'start'}),80);
 }
 
-async function searchFssCases(keyword) {
+async function searchCasesInOrder(diagnosis, surgery) {
+    const keyword = [diagnosis, surgery].filter(Boolean).join(' ').trim();
     if (!keyword) return;
-    const section = document.getElementById('fssSearchResult');
-    const listEl  = document.getElementById('fssCaseList');
+
+    const section  = document.getElementById('fssSearchResult');
+    const listEl   = document.getElementById('fssCaseList');
+    const badgeEl  = document.getElementById('fssKeywordBadge');
     if (!section || !listEl) return;
 
     section.style.display = 'block';
-    listEl.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:16px; font-size:13px;">⚖️ 분쟁조정사례 검색 중...</div>';
+    if (badgeEl) badgeEl.textContent = keyword;
+    listEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:13px;">⚖️ 관련 판례·사례 검색 중...</div>';
 
+    // 1순위: 내부 판례 DB
     try {
-        const res  = await fetch(`/api/fss-search?keyword=${encodeURIComponent(keyword)}`);
-        const data = await res.json();
-
-        const badgeEl   = document.getElementById('fssKeywordBadge');
-        const moreLinkEl = document.getElementById('fssMoreLink');
-        if (badgeEl)   badgeEl.textContent = keyword;
-        if (moreLinkEl) moreLinkEl.href =
-            `https://www.fss.or.kr/fss/job/fncCnflCase/list.do?menuNo=201195&searchKeyword=${encodeURIComponent(keyword)}`;
-
-        if (!data.cases || data.cases.length === 0) {
-            listEl.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:16px; font-size:13px;">관련 분쟁조정사례가 없습니다.</div>';
-            return;
+        const precRes = await fetch('/api/precedent-search', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
+            body:    JSON.stringify({ query: keyword, top_k: 3 })
+        });
+        if (precRes.ok) {
+            const precData = await precRes.json();
+            const chunks = precData.chunks || [];
+            if (chunks.length > 0) {
+                _renderPrecedentResults(chunks, keyword);
+                return;
+            }
         }
+    } catch (e) { console.log('판례DB 검색 실패:', e); }
 
-        listEl.innerHTML = data.cases.map(c => `
+    // 2순위: 금감원 분쟁조정사례
+    try {
+        const fssRes = await fetch(`/api/fss-search?keyword=${encodeURIComponent(keyword)}`);
+        if (fssRes.ok) {
+            const fssData = await fssRes.json();
+            if (fssData.cases && fssData.cases.length > 0) {
+                _renderFssCases(fssData.cases, keyword);
+                return;
+            }
+        }
+    } catch (e) { console.log('금감원 검색 실패:', e); }
+
+    // 둘 다 없음
+    listEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:13px;">관련 판례·분쟁조정사례가 없습니다.</div>';
+}
+
+function _renderPrecedentResults(chunks, keyword) {
+    const listEl  = document.getElementById('fssCaseList');
+    const moreEl  = document.getElementById('fssMoreLink');
+    if (moreEl) moreEl.style.display = 'none';
+    listEl.innerHTML =
+        '<div style="font-size:11px;color:#6b7280;margin-bottom:8px;">📚 내부 판례 DB에서 찾았습니다</div>' +
+        chunks.map(c => `
+            <div style="padding:12px;border:1px solid #eee;border-radius:8px;margin-bottom:8px;">
+                <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:6px;">${c.doc_name || '판례'}</div>
+                <div style="font-size:12px;color:#555;line-height:1.6;">${(c.chunk_text || '').substring(0, 150)}…</div>
+            </div>
+        `).join('');
+}
+
+function _renderFssCases(cases, keyword) {
+    const listEl = document.getElementById('fssCaseList');
+    const moreEl = document.getElementById('fssMoreLink');
+    if (moreEl) {
+        moreEl.style.display = 'block';
+        moreEl.href = `https://www.fss.or.kr/fss/job/fncCnflCase/list.do?menuNo=201195&searchKeyword=${encodeURIComponent(keyword)}`;
+    }
+    listEl.innerHTML =
+        '<div style="font-size:11px;color:#6b7280;margin-bottom:8px;">⚖️ 금감원 분쟁조정사례에서 찾았습니다</div>' +
+        cases.map(c => `
             <a href="${c.url}" target="_blank" rel="noopener"
-               style="display:block; padding:12px; border:1px solid #eee; border-radius:8px;
-                      margin-bottom:8px; text-decoration:none; color:inherit;
-                      transition:background 0.15s;"
+               style="display:block;padding:12px;border:1px solid #eee;border-radius:8px;
+                      margin-bottom:8px;text-decoration:none;color:inherit;transition:background 0.15s;"
                onmouseover="this.style.background='#f8f9ff'"
                onmouseout="this.style.background='white'">
-              <div style="font-size:13px; font-weight:600; color:#1a1a1a; margin-bottom:4px;">${c.title}</div>
-              <div style="font-size:12px; color:#94a3b8;">${c.caseNo ? c.caseNo + ' · ' : ''}${c.date}</div>
+                <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:4px;">${c.title}</div>
+                <div style="font-size:12px;color:#94a3b8;">${c.date}</div>
             </a>
         `).join('');
-
-    } catch (err) {
-        listEl.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:16px; font-size:13px;">검색 중 오류가 발생했습니다.</div>';
-    }
 }
 
 function renderGapSection(gaps) {
