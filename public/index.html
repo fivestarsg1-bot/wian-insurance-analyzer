@@ -4697,22 +4697,22 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
                     <div class="ra-item-amt">${amtDisplay}</div>
                     <span class="ra-arrow">▼</span>
                 </div>
+                <div style="padding:6px 14px;border-top:1px solid #f0f0f0;background:white;">
+                    <button class="policy-chunk-btn"
+                        data-rider="${(ra.rider_name||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/>/g,'&gt;')}"
+                        data-product="${(orig.product||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/>/g,'&gt;')}"
+                        data-insurer="${(orig.insurer||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/>/g,'&gt;')}"
+                        onclick="loadPolicyChunk(this)"
+                        style="font-size:11px;color:#0064FF;background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">
+                        📄 약관 조항 보기
+                    </button>
+                    <div class="policy-chunk-result" style="display:none;margin-top:6px;"></div>
+                </div>
                 <div class="ra-item-body">
                     ${insurerLine?`<div class="ra-body-row"><div class="ra-body-label">상품</div><div class="ra-body-text">${insurerLine}</div></div>`:''}
                     <div class="ra-body-row"><div class="ra-body-label">판정 근거</div><div class="ra-body-text">${ra.reason||'-'}</div></div>
                     ${(ra.final_amount>0||ra.amount_description)&&!isLim?`<div class="ra-body-row"><div class="ra-body-label">예상 금액</div><div class="ra-body-text" style="font-weight:700;color:var(--primary);">${amtText}${isExcluded?' <span style="font-size:10px;color:var(--muted);font-weight:400;">(합산 제외)</span>':''}</div></div>`:''}
                     ${ra.reduction_rate>0?`<div class="ra-body-row"><div class="ra-body-label">감액 적용</div><div class="ra-body-text">감액 ${Math.round(ra.reduction_rate*100)}% 적용</div></div>`:''}
-                    <div style="margin-top:8px;border-top:1px solid #f0f0f0;padding-top:8px;">
-                        <button class="policy-chunk-btn"
-                            data-rider="${(ra.rider_name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/>/g,'&gt;')}"
-                            data-product="${(orig.product||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/>/g,'&gt;')}"
-                            data-insurer="${(orig.insurer||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/>/g,'&gt;')}"
-                            onclick="loadPolicyChunk(this)"
-                            style="font-size:11px;color:#0064FF;background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">
-                            📄 약관 조항 보기
-                        </button>
-                        <div class="policy-chunk-result" style="display:none;margin-top:6px;"></div>
-                    </div>
                 </div>
             </div>`;
         }).join('');
@@ -4798,7 +4798,8 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
 }
 
 async function searchCasesInOrder(diagnosis, surgery) {
-    const keyword = [diagnosis, surgery].filter(Boolean).join(' ').trim();
+    const keyword    = [diagnosis, surgery].filter(Boolean).join(' ').trim();
+    const fssKeyword = (diagnosis || keyword).trim(); // FSS는 진단명만 — 수술명 붙이면 매칭 실패
     if (!keyword) return;
 
     const section  = document.getElementById('fssSearchResult');
@@ -4810,30 +4811,33 @@ async function searchCasesInOrder(diagnosis, surgery) {
     if (badgeEl) badgeEl.textContent = keyword;
     listEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:13px;">⚖️ 관련 판례·사례 검색 중...</div>';
 
-    // 1순위: 내부 판례 DB
-    try {
-        const precRes = await fetch('/api/precedent-search', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
-            body:    JSON.stringify({ query: keyword, top_k: 3 })
-        });
-        if (precRes.ok) {
-            const precData = await precRes.json();
-            const chunks = precData.chunks || [];
-            if (chunks.length > 0) {
-                _renderPrecedentResults(chunks, keyword);
-                return;
+    // 1순위: 내부 판례 DB (토큰 있을 때만 호출)
+    const token = getToken();
+    if (token) {
+        try {
+            const precRes = await fetch('/api/precedent-search', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json', 'x-access-token': token },
+                body:    JSON.stringify({ query: keyword, top_k: 3 })
+            });
+            if (precRes.ok) {
+                const precData = await precRes.json();
+                const chunks = precData.chunks || [];
+                if (chunks.length > 0) {
+                    _renderPrecedentResults(chunks, keyword);
+                    return;
+                }
             }
-        }
-    } catch (e) { console.log('판례DB 검색 실패:', e); }
+        } catch (e) { console.log('판례DB 검색 실패:', e); }
+    }
 
-    // 2순위: 금감원 분쟁조정사례
+    // 2순위: 금감원 분쟁조정사례 (진단명으로만 검색)
     try {
-        const fssRes = await fetch(`/api/fss-search?keyword=${encodeURIComponent(keyword)}`);
+        const fssRes = await fetch(`/api/fss-search?keyword=${encodeURIComponent(fssKeyword)}`);
         if (fssRes.ok) {
             const fssData = await fssRes.json();
             if (fssData.cases && fssData.cases.length > 0) {
-                _renderFssCases(fssData.cases, keyword);
+                _renderFssCases(fssData.cases, fssKeyword);
                 return;
             }
         }

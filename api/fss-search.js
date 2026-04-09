@@ -9,15 +9,25 @@ module.exports = async (req, res) => {
   const searchUrl = `https://www.fss.or.kr/fss/job/fncCnflCase/list.do?menuNo=201195&searchWrd=${encodeURIComponent(keyword)}&pageIndex=1`;
 
   try {
-    // 금감원은 POST + searchWrd 파라미터로만 필터링 동작
-    const response = await fetch('https://www.fss.or.kr/fss/job/fncCnflCase/list.do', {
+    const FSS_LIST = 'https://www.fss.or.kr/fss/job/fncCnflCase/list.do';
+    const commonHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'Accept': 'text/html,application/xhtml+xml',
+      'Accept-Language': 'ko-KR,ko;q=0.9',
+    };
+
+    // GET 먼저 → 세션 쿠키 획득 (금감원 POST 필터링이 세션을 요구하는 경우 대비)
+    const getRes = await fetch(`${FSS_LIST}?menuNo=201195`, { headers: commonHeaders });
+    const rawCookie = getRes.headers.get('set-cookie') || '';
+    const sessionCookie = rawCookie.split(';')[0]; // "JSESSIONID=xxxx" 부분만
+
+    const response = await fetch(FSS_LIST, {
       method: 'POST',
       headers: {
+        ...commonHeaders,
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'ko-KR,ko;q=0.9',
-        'Referer': 'https://www.fss.or.kr/fss/job/fncCnflCase/list.do?menuNo=201195'
+        'Referer': `${FSS_LIST}?menuNo=201195`,
+        ...(sessionCookie ? { 'Cookie': sessionCookie } : {}),
       },
       body: new URLSearchParams({
         menuNo: '201195',
