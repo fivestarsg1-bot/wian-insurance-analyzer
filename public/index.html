@@ -5658,29 +5658,42 @@ async function loadCustomers() {
     }
 }
 
-function renderCustList(list) {
+const CUST_LIST_LIMIT = 5;
+
+function _buildCustCard(c) {
+    const age = c.birth_date ? `${new Date().getFullYear() - new Date(c.birth_date).getFullYear()}세` : '';
+    const sub = [age, c.gender, c.phone].filter(Boolean).join(' · ');
+    const contracts = c.contract_count ? `계약 ${c.contract_count}건` : '계약 없음';
+    const lastClaim = c.last_claim_date ? `최근 청구 ${c.last_claim_date.slice(0,7)}` : '';
+    return `<div class="cust-card" onclick="showCustDetail('${c.id}')">
+        <div class="cust-avatar">${c.name.slice(0,1)}</div>
+        <div class="cust-info">
+            <div class="cust-name">${c.name}</div>
+            <div class="cust-sub">${sub || '정보 없음'}</div>
+        </div>
+        <div class="cust-meta">${contracts}<br>${lastClaim}</div>
+    </div>`;
+}
+
+function renderCustList(list, showAll = false) {
     const el = document.getElementById('custList');
     if (!list.length) { el.innerHTML = '<div class="cust-empty">등록된 고객이 없습니다.<br>아래 버튼으로 첫 고객을 등록해보세요.</div>'; return; }
-    el.innerHTML = list.map(c => {
-        const age = c.birth_date ? `${new Date().getFullYear() - new Date(c.birth_date).getFullYear()}세` : '';
-        const gender = c.gender || '';
-        const sub = [age, gender, c.phone].filter(Boolean).join(' · ');
-        const contracts = c.contract_count ? `계약 ${c.contract_count}건` : '계약 없음';
-        const lastClaim = c.last_claim_date ? `최근 청구 ${c.last_claim_date.slice(0,7)}` : '';
-        return `<div class="cust-card" onclick="showCustDetail('${c.id}')">
-            <div class="cust-avatar">${c.name.slice(0,1)}</div>
-            <div class="cust-info">
-                <div class="cust-name">${c.name}</div>
-                <div class="cust-sub">${sub || '정보 없음'}</div>
-            </div>
-            <div class="cust-meta">${contracts}<br>${lastClaim}</div>
-        </div>`;
-    }).join('');
+    const visible = showAll ? list : list.slice(0, CUST_LIST_LIMIT);
+    const hidden  = list.length - CUST_LIST_LIMIT;
+    let html = visible.map(_buildCustCard).join('');
+    if (!showAll && hidden > 0) {
+        html += `<button onclick="renderCustList(window._custListCache, true)" style="width:100%;padding:10px;border:1px dashed #ddd;border-radius:8px;background:white;color:#666;cursor:pointer;margin-top:4px;font-size:13px;">▼ ${hidden}명 더 보기</button>`;
+    } else if (showAll && list.length > CUST_LIST_LIMIT) {
+        html += `<button onclick="renderCustList(window._custListCache, false)" style="width:100%;padding:10px;border:1px dashed #ddd;border-radius:8px;background:white;color:#666;cursor:pointer;margin-top:4px;font-size:13px;">▲ 접기</button>`;
+    }
+    el.innerHTML = html;
+    window._custListCache = list;
 }
 
 function filterCustList(q) {
     const filtered = q ? _custCache.filter(c => c.name?.includes(q) || c.phone?.includes(q)) : _custCache;
-    renderCustList(filtered);
+    // 검색 중일 때는 전체 결과 표시 (접기 없음)
+    renderCustList(filtered, !!q);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -6225,6 +6238,26 @@ function closeCustSelect() { document.getElementById('custSelectModal').classLis
 // 고객 선택 모달용 캐시 (JSON.stringify 인라인 onclick 깨짐 방지)
 let _custSelectMap = {};
 
+function _renderCustSelectRows(custs, showAll = false) {
+    const el = document.getElementById('custSelectList');
+    const visible = showAll ? custs : custs.slice(0, CUST_LIST_LIMIT);
+    const hidden  = custs.length - CUST_LIST_LIMIT;
+    let html = visible.map(c => `<div class="cust-pick-row" onclick="pickCust('${c.id}')">
+        <div class="cust-avatar" style="width:34px;height:34px;font-size:14px;">${c.name.slice(0,1)}</div>
+        <div>
+            <div class="cust-pick-name">${c.name}</div>
+            <div class="cust-pick-sub">${[c.birth_date?.slice(0,4), c.gender, c.phone].filter(Boolean).join(' · ')}</div>
+        </div>
+    </div>`).join('');
+    if (!showAll && hidden > 0) {
+        html += `<button onclick="_renderCustSelectRows(window._custSelectAll, true)" style="width:100%;padding:8px;border:1px dashed #ddd;border-radius:8px;background:white;color:#666;cursor:pointer;margin-top:4px;font-size:12px;">▼ ${hidden}명 더 보기</button>`;
+    } else if (showAll && custs.length > CUST_LIST_LIMIT) {
+        html += `<button onclick="_renderCustSelectRows(window._custSelectAll, false)" style="width:100%;padding:8px;border:1px dashed #ddd;border-radius:8px;background:white;color:#666;cursor:pointer;margin-top:4px;font-size:12px;">▲ 접기</button>`;
+    }
+    el.innerHTML = html;
+    window._custSelectAll = custs;
+}
+
 async function renderCustSelectList(q) {
     const el = document.getElementById('custSelectList');
     el.innerHTML = '<div class="db-empty">불러오는 중…</div>';
@@ -6234,13 +6267,8 @@ async function renderCustSelectList(q) {
         if (!custs.length) { el.innerHTML = '<div class="db-empty">검색 결과 없음</div>'; return; }
         _custSelectMap = {};
         custs.forEach(c => { _custSelectMap[c.id] = c; });
-        el.innerHTML = custs.map(c => `<div class="cust-pick-row" onclick="pickCust('${c.id}')">
-            <div class="cust-avatar" style="width:34px;height:34px;font-size:14px;">${c.name.slice(0,1)}</div>
-            <div>
-                <div class="cust-pick-name">${c.name}</div>
-                <div class="cust-pick-sub">${[c.birth_date?.slice(0,4), c.gender, c.phone].filter(Boolean).join(' · ')}</div>
-            </div>
-        </div>`).join('');
+        // 검색 시 전체 표시, 미검색 시 CUST_LIST_LIMIT명 + 더 보기
+        _renderCustSelectRows(custs, !!q);
     } catch(e) { el.innerHTML = `<div class="db-empty">오류: ${e.message}</div>`; }
 }
 
