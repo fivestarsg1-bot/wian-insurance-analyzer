@@ -4171,6 +4171,49 @@ const SurgDB = (() => {
     return { search, load };
 })();
 
+// ════════════════════════════════════════════════════════════
+// 고객 DB 보유특약 → 분석 프롬프트 연동
+// ════════════════════════════════════════════════════════════
+function _formatCustContractsCtx(contracts, custName) {
+    if (!contracts.length) return '';
+    const name = custName ? `고객: ${custName} / ` : '';
+    const lines = contracts.map(c => {
+        const covs = (c.coverage || [])
+            .filter(cv => cv.is_active !== false)
+            .map(cv => {
+                const amt = cv.coverage_amount ? (cv.coverage_amount / 10000) + '만원' : '금액미상';
+                return `  - ${cv.category} | ${cv.coverage_name}: ${amt}`;
+            });
+        const header = `[${c.insurer} ${c.product_name} / ${c.silson_generation || '세대미상'} / 상태:${c.status || '정상'}]`;
+        return header + (covs.length ? '\n' + covs.join('\n') : '\n  (특약 없음)');
+    }).join('\n\n');
+    return `\n=== 고객 보유 보험 현황 (DB) — ${name}총 ${contracts.length}개 계약 ===\n${lines}\n\n=== 직접 입력된 보험 정보 ===\n`;
+}
+
+function _buildCustSurgCovCtx(contracts) {
+    const surgCovs = contracts
+        .flatMap(c => (c.coverage || []).filter(cv => cv.is_active !== false && cv.category === '수술비'))
+        .map(cv => {
+            const amt = cv.coverage_amount ? (cv.coverage_amount / 10000) + '만원' : '금액미상';
+            return `  - ${cv.coverage_name}: ${amt}`;
+        });
+    if (!surgCovs.length) return '';
+    return `\n\n[고객 DB 수술비 특약 목록]\n${surgCovs.join('\n')}`;
+}
+
+// 분석 도구에서 현재 고객 활성화 (보장분석 탭 → 분석 도구 연동)
+function openAnalysisWithCust() {
+    if (!_activeCustId) return;
+    _calcCustId   = _activeCustId;
+    _calcCustName = document.getElementById('custDetailName').textContent;
+    switchMainTab('analysis');
+    document.getElementById('silsonCustBar').style.display    = '';
+    document.getElementById('silsonLoadCustBtn').style.display = 'none';
+    document.getElementById('silsonCustLabel').textContent    = `👤 ${_calcCustName}`;
+    document.getElementById('silsonSaveClaimBtn').style.display = '';
+    toast(`👤 ${_calcCustName} 님이 분석 도구에 연결됐습니다.`);
+}
+
 // 수술 DB 검색 결과를 프롬프트 텍스트로 변환
 async function buildSurgDBContext(diagnosis, surgName) {
     const query = [diagnosis, surgName].filter(Boolean).join(' ');
@@ -4204,11 +4247,25 @@ async function analyze() {
                       : '입원 (입원일수 미입력 — 입원일당 final_amount=0 처리)'
         : '외래·통원 치료';
 
+    // ── 고객 DB 보유 특약 로드 ─────────────────────────────────
+    let custDbCtx     = '';
+    let custContracts = [];
+    if (_calcCustId) {
+        try {
+            custContracts = await dbFetch(`/api/contracts?customer_id=${_calcCustId}`);
+            custDbCtx     = _formatCustContractsCtx(custContracts, _calcCustName);
+        } catch(e) { console.warn('고객 DB 로드 실패:', e.message); }
+    }
+
     const rag       = await buildRAGContext(diagnosis, riders);
     const prec      = await buildPrecedentContext(diagnosis, riders);
     const surgCtx   = buildSurgContext();
     const surgName  = hasSurg ? document.getElementById('surgName').value.trim() : '';
     const surgDBCtx = await buildSurgDBContext(diagnosis, surgName);
+
+    // 고객 DB 수술비 특약 컨텍스트 (수술 케이스 + 고객 선택 시)
+    const custSurgCtx = (hasSurg && custContracts.length)
+        ? _buildCustSurgCovCtx(custContracts) : '';
 
     // 실손 계산
     const silsonCalc  = calcSilsonBenefit();
@@ -4222,7 +4279,7 @@ async function analyze() {
         : '';
 
     // 공통 컨텍스트 (모든 배치에서 재사용)
-    const baseCtx = `[기준일: ${today}]\n[진단·치료]\n진단명: ${diagnosis} / 수술: ${surgText} / 입원: ${hospText}\n기타: ${document.getElementById('otherTx').value.trim()||'없음'} / 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${surgCtx}${surgDBCtx}${rag.text}${prec.text}${silsonCtx}`;
+    const baseCtx = `${custDbCtx}[기준일: ${today}]\n[진단·치료]\n진단명: ${diagnosis} / 수술: ${surgText} / 입원: ${hospText}\n기타: ${document.getElementById('otherTx').value.trim()||'없음'} / 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${surgCtx}${custSurgCtx}${surgDBCtx}${rag.text}${prec.text}${silsonCtx}`;
 
     // 배치 분할
     const batches = [];
@@ -6023,6 +6080,12 @@ async function loadCoverageAnalysis() {
                 ${missingHtml}
             </div>` + html;
         }
+
+        html += `<div style="margin-top:14px;">
+            <button class="btn btn-primary btn-sm" style="width:100%;font-size:13px;" onclick="openAnalysisWithCust()">
+                🔍 이 고객으로 AI 보장 분석 도구 열기
+            </button>
+        </div>`;
 
         el.innerHTML = html;
     } catch(e) { el.innerHTML = `<div class="db-empty">오류: ${e.message}</div>`; }
