@@ -4766,6 +4766,20 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
         ${noteItems?`<div class="card"><div class="card-title">⚠️ 주의사항</div><ul class="notes-list">${noteItems}</ul></div>`:''}
         ${renderGapSection(r.coverage_gaps)}
         ${renderPrecedentSection(precChunks)}
+        <div id="knowledgeSearchResult" style="display:none; margin-top:16px; margin-bottom:0;">
+          <div class="card">
+            <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+              <span>📋</span>
+              <span>관련 약관 조항</span>
+              <span id="knowledgeKeywordBadge" style="background:#f0fff4;color:#16a34a;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;"></span>
+            </div>
+            <div id="knowledgeChunkList"></div>
+            <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122" target="_blank"
+               style="display:block;text-align:center;padding:10px;color:#16a34a;font-size:13px;margin-top:4px;text-decoration:none;">
+              금감원 표준약관 보기 →
+            </a>
+          </div>
+        </div>
         <div id="fssSearchResult" style="display:none; margin-top:16px;">
           <div class="card">
             <div class="card-title" style="display:flex; align-items:center; gap:8px;">
@@ -4868,15 +4882,13 @@ async function searchKnowledgeDB(diagnosis, surgery) {
     if (!listEl) return;
     listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">📋 약관 검색 중...</div>';
     try {
-        const r = await fetch('/api/rag-search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
-            body: JSON.stringify({ query: keyword, top_k: 2 })
-        });
+        // api/db.js → Supabase REST ilike 텍스트 검색 (인증 불필요)
+        const mainKw = (diagnosis || keyword).split(' ')[0];
+        const filter = `chunk_text=ilike.*${mainKw}*&limit=3`;
+        const r = await fetch(`/api/db?table=policy_chunks&filter=${encodeURIComponent(filter)}`);
         if (!r.ok) throw new Error('검색 실패');
-        const d = await r.json();
-        const chunks = d.chunks || [];
-        if (chunks.length > 0) {
+        const chunks = await r.json();
+        if (Array.isArray(chunks) && chunks.length > 0) {
             listEl.innerHTML = chunks.map(c => `
                 <div style="padding:10px;background:#f0fff4;border-left:3px solid #16a34a;border-radius:4px;margin-bottom:8px;">
                     <div style="font-size:11px;color:#16a34a;font-weight:600;margin-bottom:4px;">
