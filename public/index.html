@@ -4764,7 +4764,7 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
         ${raCard}
         <div class="card"><div class="card-title">💬 고객 설명 멘트</div><div class="script-box"><button class="copy-btn" onclick="copyScript()">📋 복사</button><div class="script-text" id="scriptText">${r.customer_script||''}</div></div></div>
         ${noteItems?`<div class="card"><div class="card-title">⚠️ 주의사항</div><ul class="notes-list">${noteItems}</ul></div>`:''}
-        ${renderGapSection(r.coverage_gaps)}
+        ${renderGapSection(filterRedundantGaps(r.coverage_gaps, r.rider_analysis))}
         ${renderPrecedentSection(precChunks)}
         <div id="knowledgeSearchResult" style="display:none; margin-top:16px; margin-bottom:0;">
           <div class="card">
@@ -4774,7 +4774,7 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
               <span id="knowledgeKeywordBadge" style="background:#f0fff4;color:#16a34a;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;"></span>
             </div>
             <div id="knowledgeChunkList"></div>
-            <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122" target="_blank"
+            <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143" target="_blank"
                style="display:block;text-align:center;padding:10px;color:#16a34a;font-size:13px;margin-top:4px;text-decoration:none;">
               금감원 표준약관 보기 →
             </a>
@@ -4886,7 +4886,7 @@ async function searchKnowledgeDB(diagnosis, surgery) {
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
             <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📎 약관 원문 찾기:</div>
             <div style="display:flex;flex-direction:column;gap:4px;">
-                <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122"
+                <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143"
                    target="_blank" rel="noopener"
                    style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
                     📑 금감원 표준약관 <span style="font-size:10px;color:#94a3b8;">→ '${kw}' 검색</span>
@@ -4958,6 +4958,20 @@ function renderFssCases(cases, keyword) {
                 <div style="font-size:12px;color:#94a3b8;">${c.date}</div>
             </a>
         `).join('');
+}
+
+function filterRedundantGaps(gaps, riderAnalysis) {
+    if (!gaps || !gaps.length) return gaps;
+    const covered = (riderAnalysis || [])
+        .filter(ra => ra.coverage_status === '보장가능' || ra.coverage_status === '조건부보장')
+        .map(ra => ra.rider_name || '');
+    const _실손KW = ['실손', '실비', '실손의료', '통원(실손)', '입원(실손)'];
+    const has실손 = covered.some(n => _실손KW.some(kw => n.includes(kw)));
+    return gaps.filter(g => {
+        const cat = g.category || '';
+        if (has실손 && _실손KW.some(kw => cat.includes(kw))) return false;
+        return true;
+    });
 }
 
 function renderGapSection(gaps) {
@@ -5052,7 +5066,7 @@ async function loadPolicyChunk(btn) {
                            style="font-size:12px;color:#fff;background:#0064FF;text-decoration:none;padding:7px 10px;border-radius:6px;display:flex;align-items:center;gap:6px;font-weight:600;">
                             🔗 ${_ins.name} 약관 페이지 바로가기
                         </a>` : ''}
-                        <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122" target="_blank" rel="noopener"
+                        <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143" target="_blank" rel="noopener"
                            style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
                             📑 금감원 표준약관 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
                         </a>
@@ -5074,7 +5088,7 @@ async function loadPolicyChunk(btn) {
                        style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #0064FF;border-radius:6px;text-decoration:none;font-weight:600;">
                         🔗 ${_ins.name} 약관 페이지 바로가기
                     </a>` : ''}
-                    <a href="https://www.fss.or.kr/fss/bbs/B0000093/list.do?menuNo=200122" target="_blank" rel="noopener"
+                    <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143" target="_blank" rel="noopener"
                        style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
                         📑 금감원 표준약관 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
                     </a>
