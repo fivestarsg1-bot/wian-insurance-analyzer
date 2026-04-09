@@ -6177,18 +6177,21 @@ function openCustSelectForCalc() {
         document.getElementById('silsonCustLabel').textContent   = `👤 ${name}`;
         document.getElementById('silsonSaveClaimBtn').style.display = '';
 
-        // 실손세대 자동 적용 (세대 드롭다운만 변경 — 재계산 없음)
-        const contracts = await dbFetch(`/api/contracts?customer_id=${id}`).catch(() => []);
-        const silsonContract = contracts.find(c => c.silson_generation);
-        if (silsonContract?.silson_generation) {
-            const genSel = document.getElementById('silsonGen');
-            if (genSel) {
-                genSel.value = silsonContract.silson_generation;
-                // 4세대 특약 row 표시/숨김만 처리 — 영수증 금액 재계산 없음
+        // 실손세대 자동 적용 (세대 드롭다운만 변경 — 영수증 금액 재계산 없음)
+        try {
+            const rows = await dbProxy('GET', 'insurance_contracts', {
+                filter: `customer_id=eq.${id}&select=id,silson_generation&order=created_at.desc`,
+            }) || [];
+            const gen = rows.find(r => r.silson_generation)?.silson_generation || null;
+            if (gen) {
+                const genSel  = document.getElementById('silsonGen');
                 const riderRow = document.getElementById('silson4RiderRow');
-                if (riderRow) riderRow.style.display = silsonContract.silson_generation === '4세대' ? '' : 'none';
+                const badge   = document.getElementById('silsonGenBadge');
+                if (genSel) genSel.value = gen;
+                if (riderRow) riderRow.style.display = gen === '4세대' ? '' : 'none';
+                if (badge) { badge.textContent = `✓ ${gen} 자동감지됨`; badge.className = 'gen-badge'; }
             }
-        }
+        } catch(e) { console.warn('실손세대 자동감지 실패:', e.message); }
     });
 }
 
