@@ -4570,6 +4570,9 @@ async function analyze() {
         setAnalysisProgress(98);
         clearInterval(stepTimer);
         renderResults(result, riders, rag.refs, prec.refs, prec.chunks);
+        // 금감원 분쟁조정사례 자동 검색
+        const fssKeyword = [diagnosis, hasSurg ? document.getElementById('surgName').value.trim() : ''].filter(Boolean).join(' ').trim();
+        searchFssCases(fssKeyword);
     } catch (err) {
         clearInterval(stepTimer);
         document.getElementById('resultsSection').innerHTML =
@@ -4752,6 +4755,20 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
         ${noteItems?`<div class="card"><div class="card-title">⚠️ 주의사항</div><ul class="notes-list">${noteItems}</ul></div>`:''}
         ${renderGapSection(r.coverage_gaps)}
         ${renderPrecedentSection(precChunks)}
+        <div id="fssSearchResult" style="display:none; margin-top:16px;">
+          <div class="card">
+            <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+              <span>⚖️</span>
+              <span>금감원 분쟁조정사례</span>
+              <span id="fssKeywordBadge" style="background:#f0f4ff; color:#0064FF; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:500;"></span>
+            </div>
+            <div id="fssCaseList"></div>
+            <a id="fssMoreLink" href="#" target="_blank"
+               style="display:block; text-align:center; padding:10px; color:#0064FF; font-size:13px; margin-top:4px; text-decoration:none;">
+              금감원에서 더 보기 →
+            </a>
+          </div>
+        </div>
         <div class="disclaimer">⚖️ ${r.disclaimer||'이 분석은 참고용이며 실제 보험금 지급 여부는 보험사 최종 심사에 따라 달라질 수 있습니다.'}</div>
         <div class="action-bar">
             <button class="btn btn-primary" onclick="showPDFModal()">📄 고객 리포트 출력</button>
@@ -4767,6 +4784,47 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
         });
     }));
     setTimeout(()=>document.getElementById('resultsSection').scrollIntoView({behavior:'smooth',block:'start'}),80);
+}
+
+async function searchFssCases(keyword) {
+    if (!keyword) return;
+    const section = document.getElementById('fssSearchResult');
+    const listEl  = document.getElementById('fssCaseList');
+    if (!section || !listEl) return;
+
+    section.style.display = 'block';
+    listEl.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:16px; font-size:13px;">⚖️ 분쟁조정사례 검색 중...</div>';
+
+    try {
+        const res  = await fetch(`/api/fss-search?keyword=${encodeURIComponent(keyword)}`);
+        const data = await res.json();
+
+        const badgeEl   = document.getElementById('fssKeywordBadge');
+        const moreLinkEl = document.getElementById('fssMoreLink');
+        if (badgeEl)   badgeEl.textContent = keyword;
+        if (moreLinkEl) moreLinkEl.href =
+            `https://www.fss.or.kr/fss/job/fncCnflCase/list.do?menuNo=201195&searchKeyword=${encodeURIComponent(keyword)}`;
+
+        if (!data.cases || data.cases.length === 0) {
+            listEl.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:16px; font-size:13px;">관련 분쟁조정사례가 없습니다.</div>';
+            return;
+        }
+
+        listEl.innerHTML = data.cases.map(c => `
+            <a href="${c.url}" target="_blank" rel="noopener"
+               style="display:block; padding:12px; border:1px solid #eee; border-radius:8px;
+                      margin-bottom:8px; text-decoration:none; color:inherit;
+                      transition:background 0.15s;"
+               onmouseover="this.style.background='#f8f9ff'"
+               onmouseout="this.style.background='white'">
+              <div style="font-size:13px; font-weight:600; color:#1a1a1a; margin-bottom:4px;">${c.title}</div>
+              <div style="font-size:12px; color:#94a3b8;">${c.caseNo ? c.caseNo + ' · ' : ''}${c.date}</div>
+            </a>
+        `).join('');
+
+    } catch (err) {
+        listEl.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:16px; font-size:13px;">검색 중 오류가 발생했습니다.</div>';
+    }
 }
 
 function renderGapSection(gaps) {
