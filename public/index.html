@@ -4882,17 +4882,7 @@ async function searchKnowledgeDB(diagnosis, surgery) {
     if (!listEl) return;
     listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">📋 약관 검색 중...</div>';
     const mainKw = (diagnosis || keyword).split(' ')[0];
-    const _extLinks = (kw) => `
-        <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
-            <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📎 약관 원문 찾기:</div>
-            <div style="display:flex;flex-direction:column;gap:4px;">
-                <a href="${_FSS_BASE}&searchCnd=1&searchWrd=${encodeURIComponent(kw)}"
-                   target="_blank" rel="noopener"
-                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #0064FF;border-radius:6px;text-decoration:none;font-weight:600;">
-                    📑 금감원에서 '${kw}' 약관 검색
-                </a>
-            </div>
-        </div>`;
+    const _extLinks = () => _policyLinksHtml(null);
     try {
         // 1차: doc_name ilike (관련성 높음)
         let chunks = [];
@@ -4911,12 +4901,12 @@ async function searchKnowledgeDB(diagnosis, surgery) {
                     <div style="font-size:11px;color:#16a34a;font-weight:600;margin-bottom:4px;">📄 ${c.doc_name || '약관'}</div>
                     <div style="font-size:12px;color:#374151;line-height:1.6;">${(c.chunk_text || '').substring(0, 200)}…</div>
                 </div>
-            `).join('') + _extLinks(mainKw);
+            `).join('') + _extLinks();
         } else {
-            listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">관련 약관을 찾지 못했습니다.</div>' + _extLinks(mainKw);
+            listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">관련 약관을 찾지 못했습니다.</div>' + _extLinks();
         }
     } catch (e) {
-        listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;">약관 검색 오류</div>' + _extLinks(mainKw);
+        listEl.innerHTML = '<div style="color:#94a3b8;font-size:12px;">약관 검색 오류</div>' + _extLinks();
     }
 }
 
@@ -4991,8 +4981,7 @@ function renderGapSection(gaps) {
     return `<div class="gap-section"><div class="gap-title-bar">📌 추가 가입 권유 <span style="font-size:12px;font-weight:400;color:#92400e;">(${items.length}개 항목)</span></div>${rows}</div>`;
 }
 
-// 금감원 보험상품자료에서 보험사명으로 검색하는 URL 생성
-const _FSS_BASE = 'https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143';
+// 보험사명 추출용 키워드 맵
 const _INSURER_KW = [
     ['삼성화재', '삼성화재'], ['삼성생명', '삼성생명'], ['삼성', '삼성생명'],
     ['한화손보', '한화손해보험'], ['한화생명', '한화생명'], ['한화', '한화생명'],
@@ -5004,15 +4993,39 @@ const _INSURER_KW = [
     ['AIA', 'AIA생명'], ['푸본', '푸본현대생명'], ['농협', '농협생명'],
 ];
 
-function _matchInsurerLink(insurer, product) {
+function _matchInsurerName(insurer, product) {
     const s = (insurer + ' ' + product).trim();
     for (const [key, name] of _INSURER_KW) {
-        if (s.includes(key)) return {
-            name,
-            url: `${_FSS_BASE}&searchCnd=1&searchWrd=${encodeURIComponent(name)}`
-        };
+        if (s.includes(key)) return name;
     }
     return null;
+}
+
+function _policyLinksHtml(insurerName) {
+    return `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;">
+            <div style="font-size:11px;color:#999;margin-bottom:6px;">
+                📎 약관 원문 찾기 <span style="color:#aaa;">(보험사 고객센터 → 약관 메뉴)</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;">
+                ${insurerName ? `
+                <div style="font-size:12px;padding:6px 10px;background:#f8f9ff;border-radius:6px;color:#555;">
+                    💡 <strong>${insurerName}</strong> 약관: 해당 보험사 고객센터 앱 또는 홈페이지 → <strong>약관/증권</strong> 메뉴
+                </div>` : ''}
+                <a href="https://pub.insure.or.kr" target="_blank" rel="noopener"
+                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #dde;border-radius:6px;text-decoration:none;">
+                    📊 생명보험협회 공시실
+                </a>
+                <a href="https://www.knia.or.kr/consumer/clauses/list" target="_blank" rel="noopener"
+                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #dde;border-radius:6px;text-decoration:none;">
+                    📋 손해보험협회 약관 목록
+                </a>
+                <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143" target="_blank" rel="noopener"
+                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #dde;border-radius:6px;text-decoration:none;">
+                    📑 금감원 보험상품자료 (표준약관)
+                </a>
+            </div>
+        </div>`;
 }
 
 async function loadPolicyChunk(btn) {
@@ -5022,7 +5035,7 @@ async function loadPolicyChunk(btn) {
     const riderName  = btn.dataset.rider   || '';
     const product    = btn.dataset.product || '';
     const insurer    = btn.dataset.insurer || '';
-    const _ins       = _matchInsurerLink(insurer, product);
+    const _insurerName = _matchInsurerName(insurer, product);
 
     // 토글: 열려 있으면 닫기
     if (resultDiv.style.display !== 'none') {
@@ -5049,15 +5062,10 @@ async function loadPolicyChunk(btn) {
         if (chunks.length === 0) {
             resultDiv.innerHTML = `
                 <div style="padding:10px;background:#fffbf0;border-left:3px solid #f59e0b;border-radius:4px;margin-top:8px;">
-                    <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:8px;">
+                    <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:4px;">
                         📋 내부 DB에 약관이 없습니다. 아래에서 확인하세요:
                     </div>
-                    <div style="display:flex;flex-direction:column;gap:6px;">
-                        <a href="${_ins ? _ins.url : _FSS_BASE}" target="_blank" rel="noopener"
-                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #0064FF;border-radius:6px;display:flex;align-items:center;gap:6px;font-weight:600;">
-                            📑 금감원에서 ${_ins ? _ins.name : '보험'} 약관 검색
-                        </a>
-                    </div>
+                    ${_policyLinksHtml(_insurerName)}
                     <div style="font-size:11px;color:#999;margin-top:8px;">
                         💡 해당 약관을 PDF로 저장 후 약관DB에 추가하면 다음부터 자동으로 표시됩니다.
                     </div>
@@ -5066,16 +5074,7 @@ async function loadPolicyChunk(btn) {
             return;
         }
 
-        const extLinksHtml = `
-            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
-                <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📎 약관 원문:</div>
-                <div style="display:flex;flex-direction:column;gap:4px;">
-                    <a href="${_ins ? _ins.url : _FSS_BASE}" target="_blank" rel="noopener"
-                       style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #0064FF;border-radius:6px;text-decoration:none;font-weight:600;">
-                        📑 금감원에서 ${_ins ? _ins.name : '보험'} 약관 검색
-                    </a>
-                </div>
-            </div>`;
+        const extLinksHtml = _policyLinksHtml(_insurerName);
         resultDiv.innerHTML = chunks.map(c => {
             const text = c.chunk_text || '';
             const preview  = text.substring(0, 300);
