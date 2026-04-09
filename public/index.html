@@ -4185,9 +4185,18 @@ function formatCoverageAmount(amount) {
     return n.toLocaleString() + '만원';
 }
 
-function _formatCustContractsCtx(contracts, custName) {
+// skipList=true: DB 특약이 아래 [특약 목록]으로 그대로 사용될 때 — 중복 방지
+// skipList=false: 직접 입력 특약도 있을 때 — DB 전체 목록을 배경 정보로 표시
+function _formatCustContractsCtx(contracts, custName, skipList = false) {
     if (!contracts.length) return '';
     const name = custName ? `고객: ${custName} / ` : '';
+    if (skipList) {
+        const headers = contracts.map(c => {
+            const cnt = (c.coverage || []).filter(cv => cv.is_active !== false).length;
+            return `  · ${c.insurer} ${c.product_name} / ${c.silson_generation || '세대미상'} / ${c.status || '정상'} (특약 ${cnt}개)`;
+        }).join('\n');
+        return `\n=== 고객 DB 보유 계약 — ${name}총 ${contracts.length}개 ===\n${headers}\n(특약 명세는 아래 [특약 목록] 참조 — 중복 방지)\n\n`;
+    }
     const lines = contracts.map(c => {
         const covs = (c.coverage || [])
             .filter(cv => cv.is_active !== false)
@@ -4198,7 +4207,7 @@ function _formatCustContractsCtx(contracts, custName) {
         const header = `[${c.insurer} ${c.product_name} / ${c.silson_generation || '세대미상'} / 상태:${c.status || '정상'}]`;
         return header + (covs.length ? '\n' + covs.join('\n') : '\n  (특약 없음)');
     }).join('\n\n');
-    return `\n=== 고객 보유 보험 현황 (DB) — ${name}총 ${contracts.length}개 계약 ===\n${lines}\n\n=== 직접 입력된 보험 정보 ===\n`;
+    return `\n=== DB 보유 특약 (자동 로드) — ${name}총 ${contracts.length}개 계약 ===\n${lines}\n\n=== 추가 입력 특약 (직접 입력) ===\n`;
 }
 
 function _buildCustSurgCovCtx(contracts) {
@@ -4209,7 +4218,8 @@ function _buildCustSurgCovCtx(contracts) {
             return `  - ${cv.coverage_name}: ${amt}`;
         });
     if (!surgCovs.length) return '';
-    return `\n\n[고객 DB 수술비 특약 목록]\n${surgCovs.join('\n')}`;
+    const surgName = hasSurg ? (document.getElementById('surgName')?.value.trim() || '미입력') : '미입력';
+    return `\n\n[고객 DB 수술비 특약 목록]\n${surgCovs.join('\n')}\n※ 수술비 특약 판정 시 반드시 수술 분류(1~5종, 또는 해당 약관 기준)를 확인하세요.\n   종수술비는 수술 종류에 따라 지급 금액이 다르며, 최대 금액으로 가정하지 마세요.\n   수술명: ${surgName}에 해당하는 종 분류를 약관 기준으로 판단하세요.`;
 }
 
 // 분석 도구에서 현재 고객 활성화 (보장분석 탭 → 분석 도구 연동)
@@ -4268,7 +4278,10 @@ async function analyze() {
     if (_calcCustId) {
         try {
             custContracts = await dbFetch(`/api/contracts?customer_id=${_calcCustId}`);
-            custDbCtx     = _formatCustContractsCtx(custContracts, _calcCustName);
+            // skipList: riders가 전부 DB 합성으로 변환될 경우 [특약 목록]과 중복 방지
+            // 직접 입력 riders가 있으면 DB 목록 전체를 배경 정보로 표시
+            const willAllBeDb = !riders.length && custContracts.length > 0;
+            custDbCtx = _formatCustContractsCtx(custContracts, _calcCustName, willAllBeDb);
         } catch(e) { console.warn('고객 DB 로드 실패:', e.message); }
         // 직접 입력된 특약이 없으면 DB 특약을 합성 riders로 변환
         if (!riders.length && custContracts.length) {
