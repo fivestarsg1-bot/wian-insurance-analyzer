@@ -4174,6 +4174,17 @@ const SurgDB = (() => {
 // ════════════════════════════════════════════════════════════
 // 고객 DB 보유특약 → 분석 프롬프트 연동
 // ════════════════════════════════════════════════════════════
+
+// 보장금액 통일 포맷 (원 단위 저장 → 만원 표시)
+function formatCoverageAmount(amount) {
+    if (amount == null) return '-';
+    const n = Number(amount);
+    if (!n) return '-';
+    if (n >= 10000) return (n / 10000).toLocaleString() + '만원';
+    // 10000 미만 → 만원 단위로 저장된 것으로 간주
+    return n.toLocaleString() + '만원';
+}
+
 function _formatCustContractsCtx(contracts, custName) {
     if (!contracts.length) return '';
     const name = custName ? `고객: ${custName} / ` : '';
@@ -4181,7 +4192,7 @@ function _formatCustContractsCtx(contracts, custName) {
         const covs = (c.coverage || [])
             .filter(cv => cv.is_active !== false)
             .map(cv => {
-                const amt = cv.coverage_amount ? (cv.coverage_amount / 10000) + '만원' : '금액미상';
+                const amt = cv.coverage_amount ? formatCoverageAmount(cv.coverage_amount) : '금액미상';
                 return `  - ${cv.category} | ${cv.coverage_name}: ${amt}`;
             });
         const header = `[${c.insurer} ${c.product_name} / ${c.silson_generation || '세대미상'} / 상태:${c.status || '정상'}]`;
@@ -4194,7 +4205,7 @@ function _buildCustSurgCovCtx(contracts) {
     const surgCovs = contracts
         .flatMap(c => (c.coverage || []).filter(cv => cv.is_active !== false && cv.category === '수술비'))
         .map(cv => {
-            const amt = cv.coverage_amount ? (cv.coverage_amount / 10000) + '만원' : '금액미상';
+            const amt = cv.coverage_amount ? formatCoverageAmount(cv.coverage_amount) : '금액미상';
             return `  - ${cv.coverage_name}: ${amt}`;
         });
     if (!surgCovs.length) return '';
@@ -4235,8 +4246,12 @@ const BATCH_SIZE = 5;
 async function analyze() {
     const diagnosis = document.getElementById('diagnosis').value.trim();
     if (!diagnosis) { alert('진단명 또는 증상을 입력해주세요.'); return; }
-    const riders = getRiders();
-    if (!riders.length) { alert('특약 정보를 최소 1개 입력해주세요 (특약명 필수).'); return; }
+    let riders = getRiders();
+    // 고객이 선택된 경우 특약 직접 입력 없어도 통과 (DB에서 로드)
+    if (!riders.length && !_calcCustId) {
+        alert('특약 정보를 최소 1개 입력해주세요 (또는 고객을 선택하세요).');
+        return;
+    }
 
     const today      = new Date().toISOString().split('T')[0];
     const surgText   = hasSurg ? `수술 있음 / 수술명: ${document.getElementById('surgName').value.trim()||'미입력'}` : '수술 없음';
@@ -4255,6 +4270,26 @@ async function analyze() {
             custContracts = await dbFetch(`/api/contracts?customer_id=${_calcCustId}`);
             custDbCtx     = _formatCustContractsCtx(custContracts, _calcCustName);
         } catch(e) { console.warn('고객 DB 로드 실패:', e.message); }
+        // 직접 입력된 특약이 없으면 DB 특약을 합성 riders로 변환
+        if (!riders.length && custContracts.length) {
+            let seq = 0;
+            riders = custContracts.flatMap(c =>
+                (c.coverage || []).filter(cv => cv.is_active !== false).map(cv => ({
+                    idx:      ++seq,
+                    insurer:  c.insurer   || '',
+                    product:  c.product_name || '',
+                    rider:    cv.coverage_name || '',
+                    amount:   cv.coverage_amount ? formatCoverageAmount(cv.coverage_amount) : '',
+                    startDate: c.contract_date || '',
+                    category: cv.category || '',
+                    _source:  'db',
+                }))
+            );
+            if (!riders.length) {
+                alert('선택한 고객의 등록된 특약이 없습니다. 보유보험 탭에서 특약을 먼저 등록해주세요.');
+                return;
+            }
+        }
     }
 
     const rag       = await buildRAGContext(diagnosis, riders);
@@ -5693,7 +5728,7 @@ async function loadContracts() {
             const covHtml = (c.coverage || []).map(cv => `
                 <div class="coverage-item ${cv.is_active ? '' : 'cov-inactive'}">
                     <span><span class="cov-cat">${cv.category}</span>${cv.coverage_name}</span>
-                    <span class="cov-amt">${cv.coverage_amount ? cv.coverage_amount.toLocaleString() + '원' : '-'}</span>
+                    <span class="cov-amt">${formatCoverageAmount(cv.coverage_amount)}</span>
                 </div>`).join('');
             return `<div class="contract-card">
                 <div class="contract-head">
@@ -5855,7 +5890,7 @@ function ctApplyOcrResult(r) {
     document.getElementById('ctOcrCovCount').textContent = covs.length;
     document.getElementById('ctOcrCovList').innerHTML = covs.map((cv, i) => {
         const safeData = JSON.stringify({ category: cv.category || '기타', coverage_name: cv.coverage_name || '', coverage_amount: cv.coverage_amount || null, is_active: true }).replace(/"/g, '&quot;');
-        const amt = cv.coverage_amount ? cv.coverage_amount.toLocaleString() + '원' : '';
+        const amt = cv.coverage_amount ? formatCoverageAmount(cv.coverage_amount) : '';
         return `<div class="ct-cov-item">
             <label>
                 <input type="checkbox" checked data-cov="${safeData}">
@@ -6056,12 +6091,11 @@ async function loadCoverageAnalysis() {
         for (const cat of CATEGORIES) {
             const items = grouped[cat];
             if (!items.length) continue;
-            const total = items.reduce((s, cv) => s + (cv.coverage_amount || 0), 0);
             html += `<div class="cov-analysis-section">
-                <div class="cov-analysis-title">${cat} <span style="font-weight:400;float:right;">합계 ${total.toLocaleString()}원</span></div>
+                <div class="cov-analysis-title">${cat}</div>
                 ${items.map(cv => `<div class="cov-analysis-row">
                     <span>${cv.coverage_name}${cv.subcategory ? ` (${cv.subcategory})` : ''}</span>
-                    <span class="cov-analysis-amt ok">${cv.coverage_amount ? cv.coverage_amount.toLocaleString() + '원' : '-'}</span>
+                    <span class="cov-analysis-amt ok">${formatCoverageAmount(cv.coverage_amount)}</span>
                 </div>`).join('')}
             </div>`;
         }
