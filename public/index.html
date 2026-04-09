@@ -4317,6 +4317,14 @@ async function analyze() {
                 alert('선택한 고객의 등록된 특약이 없습니다. 보유보험 탭에서 특약을 먼저 등록해주세요.');
                 return;
             }
+        } else if (riders.length && custContracts.length) {
+            // 직접입력 riders 중 DB 특약과 이름이 겹치는 항목 제거 (중복 방지)
+            const dbNames = custContracts
+                .flatMap(c => (c.coverage || []).filter(cv => cv.is_active !== false))
+                .map(cv => cv.coverage_name);
+            riders = riders.filter(r =>
+                !dbNames.some(n => n.includes(r.rider) || r.rider.includes(n))
+            );
         }
     }
 
@@ -4543,7 +4551,10 @@ async function analyze() {
 // 특약 목록 → 프롬프트 텍스트
 function makeRiderLines(batch) {
     return batch.map(r => {
-        const srcTag = r._source === 'recommend' ? ' | [추천상품]' : r._source === 'current' ? ' | [기존보장]' : '';
+        const srcTag = r._source === 'recommend' ? ' | [추천상품]'
+                     : r._source === 'current'   ? ' | [기존보장]'
+                     : r._source === 'db'         ? ' | [DB자동]'
+                     : '';
         const catTag = r.category ? ` | 카테고리: ${r.category}` : '';
         return `  [특약${r.idx}] 보험사: ${r.insurer||'미입력'} | 상품: ${r.product||'미입력'} | 특약명: ${r.rider} | 가입금액: ${r.amount||'미입력'} | 가입일: ${fmtDate(r.startDate)} | ${fmtElapsed(daysSince(r.startDate))}${srcTag}${catTag}`;
     }).join('\n');
@@ -4560,7 +4571,15 @@ function makeMainSystemPrompt() {
 - coverage_classification["3대진단"]은 악성종양·뇌졸중·급성심근경색 확정 진단 시에만 true.
 
 ## 면책·감액 규칙
-①암특약 90일면책+1년50%감액 ②뇌혈관·심장진단비 감액1~2년50% ③수술비·상해특약 면책없음 ④기타질병 30~180일면책+1~2년50%감액. 수술1~3종/1~5종은 [수술명 분류 DB] 최우선 참조.
+①암특약 90일면책+1년50%감액 ②뇌혈관·심장진단비 감액1~2년50% ③수술비·상해특약 면책없음 ④기타질병 30~180일면책+1~2년50%감액.
+
+## 수술 종 분류 기준 (절대 원칙)
+[수술명 분류 DB] 항목 있으면 DB를 최우선 참조. DB 없으면 아래 기준으로 판단. 절대 최대 종으로 가정하지 말 것.
+- 내시경 단순 절제(용종·폴립·점막절제 등) → 1종
+- 단순절개·봉합·충수절제(맹장) · 서혜부 탈장 단순봉합 → 2종
+- 복강경 담낭절제·자궁근종·관절경 수술 등 중등도 → 3종
+- 주요 장기 광범위 절제(위·대장·폐 일부 절제 등) → 4종
+- 심장·개흉·대혈관·장기이식 수술 → 5종
 
 reason 2문장 이내. customer_script 3문장 이내. coverage_gaps 최대 3개. important_notes 최대 3개. 순수 JSON만 반환 (코드블록 없이):
 {"kcd_analysis":{"estimated_codes":[],"disease_category":"","description":""},"coverage_classification":{"3대진단":false,"입원":false,"수술":false,"실손":false,"상해":false,"간병":false,"explanation":""},"period_check":{"exemption_applicable":false,"exemption_detail":"","reduction_applicable":false,"reduction_detail":"","direct_cause_met":true,"direct_cause_detail":""},"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":""}],"total_estimated":0,"total_description":"","customer_script":"","important_notes":[],"coverage_gaps":[{"category":"","status":"미가입","current":"","recommend":"","reason":""}],"disclaimer":""}
@@ -4571,7 +4590,8 @@ coverage_status: "보장가능"/"조건부보장"/"보장제한". coverage_gaps 
 function makeBatchSystemPrompt() {
     return `한국 손해사정사. 주어진 특약들만 분석하여 {"rider_analysis":[...]} 형태로 반환.
 암 진단비: 악성종양(C00-C97)/상피내암(D00-D09)만 해당. 양성종양(D10-D36)·용종·섬유종 등은 암 진단비 보장제한.
-면책·감액: 암특약 90일+1년50% / 뇌혈관·심장 감액1~2년50% / 수술비·상해 없음 / 기타질병 30~180일+1~2년50%. 수술종류는 [수술 분류표] 참조.
+면책·감액: 암특약 90일+1년50% / 뇌혈관·심장 감액1~2년50% / 수술비·상해 없음 / 기타질병 30~180일+1~2년50%.
+수술 종 분류: [수술명 분류 DB] 최우선. DB 없으면 — 내시경 단순절제·폴립→1종, 충수절제·단순봉합→2종, 복강경·중등도→3종, 주요장기 절제→4종, 심장·개흉·대혈관→5종. 절대 최대 종으로 가정 금지.
 reason 2문장 이내. 순수 JSON만 반환 (코드블록 없이):
 {"rider_analysis":[{"rider_name":"","coverage_status":"보장가능","reason":"","estimated_amount":0,"reduction_rate":0,"final_amount":0,"amount_description":""}]}
 coverage_status: "보장가능"/"조건부보장"/"보장제한".`;
