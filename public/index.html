@@ -4886,15 +4886,10 @@ async function searchKnowledgeDB(diagnosis, surgery) {
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
             <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📎 약관 원문 찾기:</div>
             <div style="display:flex;flex-direction:column;gap:4px;">
-                <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143"
+                <a href="${_FSS_BASE}&searchCnd=1&searchWrd=${encodeURIComponent(kw)}"
                    target="_blank" rel="noopener"
-                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                    📑 금감원 표준약관 <span style="font-size:10px;color:#94a3b8;">→ '${kw}' 검색</span>
-                </a>
-                <a href="https://www.kidi.or.kr"
-                   target="_blank" rel="noopener"
-                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                    🏛️ 보험개발원 공시실 <span style="font-size:10px;color:#94a3b8;">→ '${kw}' 검색</span>
+                   style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #0064FF;border-radius:6px;text-decoration:none;font-weight:600;">
+                    📑 금감원에서 '${kw}' 약관 검색
                 </a>
             </div>
         </div>`;
@@ -4996,36 +4991,26 @@ function renderGapSection(gaps) {
     return `<div class="gap-section"><div class="gap-title-bar">📌 추가 가입 권유 <span style="font-size:12px;font-weight:400;color:#92400e;">(${items.length}개 항목)</span></div>${rows}</div>`;
 }
 
-// 보험사 메인 홈페이지만 — 약관 상세 URL은 자주 바뀌므로 메인으로 연결
-const _INSURER_MAIN = [
-    ['삼성화재', '삼성화재', 'https://www.samsungfire.com'],
-    ['삼성생명', '삼성생명', 'https://www.samsunglife.com'],
-    ['삼성',    '삼성생명', 'https://www.samsunglife.com'],
-    ['한화손보', '한화손해보험', 'https://www.hwgeneralins.com'],
-    ['한화생명', '한화생명', 'https://www.hanwhalife.com'],
-    ['한화',    '한화생명', 'https://www.hanwhalife.com'],
-    ['현대해상', '현대해상', 'https://www.hi.co.kr'],
-    ['메리츠',  '메리츠화재', 'https://www.meritzfire.com'],
-    ['KB손보',  'KB손해보험', 'https://www.kbinsure.co.kr'],
-    ['KB생명',  'KB생명', 'https://www.kblife.co.kr'],
-    ['KB',      'KB손해보험', 'https://www.kbinsure.co.kr'],
-    ['DB',      'DB손해보험', 'https://www.idbins.com'],
-    ['롯데',    '롯데손해보험', 'https://www.lotteins.co.kr'],
-    ['흥국',    '흥국화재', 'https://www.heungkukfire.co.kr'],
-    ['교보',    '교보생명', 'https://www.kyobo.co.kr'],
-    ['신한라이프','신한라이프', 'https://www.shinhanlife.co.kr'],
-    ['신한',    '신한라이프', 'https://www.shinhanlife.co.kr'],
-    ['동양',    '동양생명', 'https://www.myangel.co.kr'],
-    ['라이나',  '라이나생명', 'https://www.lina.co.kr'],
-    ['미래에셋', '미래에셋생명', 'https://life.miraeasset.com'],
-    ['AIA',     'AIA생명', 'https://www.aia.co.kr'],
-    ['푸본현대', '푸본현대생명', 'https://www.fubon-hyundai.co.kr'],
+// 금감원 보험상품자료에서 보험사명으로 검색하는 URL 생성
+const _FSS_BASE = 'https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143';
+const _INSURER_KW = [
+    ['삼성화재', '삼성화재'], ['삼성생명', '삼성생명'], ['삼성', '삼성생명'],
+    ['한화손보', '한화손해보험'], ['한화생명', '한화생명'], ['한화', '한화생명'],
+    ['현대해상', '현대해상'], ['메리츠', '메리츠화재'],
+    ['KB손보', 'KB손해보험'], ['KB생명', 'KB생명보험'], ['KB', 'KB손해보험'],
+    ['DB', 'DB손해보험'], ['롯데', '롯데손해보험'], ['흥국', '흥국화재'],
+    ['교보', '교보생명'], ['신한라이프', '신한라이프'], ['신한', '신한라이프'],
+    ['동양', '동양생명'], ['라이나', '라이나생명'], ['미래에셋', '미래에셋생명'],
+    ['AIA', 'AIA생명'], ['푸본', '푸본현대생명'], ['농협', '농협생명'],
 ];
 
 function _matchInsurerLink(insurer, product) {
     const s = (insurer + ' ' + product).trim();
-    for (const [key, name, url] of _INSURER_MAIN) {
-        if (s.includes(key)) return { name, url };
+    for (const [key, name] of _INSURER_KW) {
+        if (s.includes(key)) return {
+            name,
+            url: `${_FSS_BASE}&searchCnd=1&searchWrd=${encodeURIComponent(name)}`
+        };
     }
     return null;
 }
@@ -5068,14 +5053,9 @@ async function loadPolicyChunk(btn) {
                         📋 내부 DB에 약관이 없습니다. 아래에서 확인하세요:
                     </div>
                     <div style="display:flex;flex-direction:column;gap:6px;">
-                        ${_ins ? `
-                        <a href="${_ins.url}" target="_blank" rel="noopener"
+                        <a href="${_ins ? _ins.url : _FSS_BASE}" target="_blank" rel="noopener"
                            style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #0064FF;border-radius:6px;display:flex;align-items:center;gap:6px;font-weight:600;">
-                            🏢 ${_ins.name} 홈페이지 → 고객센터 &gt; 약관
-                        </a>` : ''}
-                        <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143" target="_blank" rel="noopener"
-                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                            📑 금감원 보험상품자료(약관) 검색
+                            📑 금감원에서 ${_ins ? _ins.name : '보험'} 약관 검색
                         </a>
                     </div>
                     <div style="font-size:11px;color:#999;margin-top:8px;">
@@ -5090,14 +5070,9 @@ async function loadPolicyChunk(btn) {
             <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
                 <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📎 약관 원문:</div>
                 <div style="display:flex;flex-direction:column;gap:4px;">
-                    ${_ins ? `
-                    <a href="${_ins.url}" target="_blank" rel="noopener"
+                    <a href="${_ins ? _ins.url : _FSS_BASE}" target="_blank" rel="noopener"
                        style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #0064FF;border-radius:6px;text-decoration:none;font-weight:600;">
-                        🏢 ${_ins.name} 홈페이지 → 고객센터 &gt; 약관
-                    </a>` : ''}
-                    <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143" target="_blank" rel="noopener"
-                       style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                        📑 금감원 보험상품자료(약관) 검색
+                        📑 금감원에서 ${_ins ? _ins.name : '보험'} 약관 검색
                     </a>
                 </div>
             </div>`;
