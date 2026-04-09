@@ -4764,7 +4764,7 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
         ${raCard}
         <div class="card"><div class="card-title">💬 고객 설명 멘트</div><div class="script-box"><button class="copy-btn" onclick="copyScript()">📋 복사</button><div class="script-text" id="scriptText">${r.customer_script||''}</div></div></div>
         ${noteItems?`<div class="card"><div class="card-title">⚠️ 주의사항</div><ul class="notes-list">${noteItems}</ul></div>`:''}
-        ${renderGapSection(filterRedundantGaps(r.coverage_gaps, r.rider_analysis))}
+        ${renderGapSection(filterRedundantGaps(r.coverage_gaps, r.rider_analysis, hasHosp))}
         ${renderPrecedentSection(precChunks)}
         <div id="knowledgeSearchResult" style="display:none; margin-top:16px; margin-bottom:0;">
           <div class="card">
@@ -4960,7 +4960,7 @@ function renderFssCases(cases, keyword) {
         `).join('');
 }
 
-function filterRedundantGaps(gaps, riderAnalysis) {
+function filterRedundantGaps(gaps, riderAnalysis, isInpatient) {
     if (!gaps || !gaps.length) return gaps;
     const covered = (riderAnalysis || [])
         .filter(ra => ra.coverage_status === '보장가능' || ra.coverage_status === '조건부보장')
@@ -4969,7 +4969,12 @@ function filterRedundantGaps(gaps, riderAnalysis) {
     const has실손 = covered.some(n => _실손KW.some(kw => n.includes(kw)));
     return gaps.filter(g => {
         const cat = g.category || '';
+        // 실손 보유 시 실손 권유 제거
         if (has실손 && _실손KW.some(kw => cat.includes(kw))) return false;
+        // 외래/통원이면 입원 관련 권유 제거
+        if (!isInpatient && (cat.includes('입원일당') || cat.includes('입원의료비') || cat.includes('입원비') || cat.includes('질병입원'))) return false;
+        // 입원이면 통원/외래 권유 제거
+        if (isInpatient && (cat.includes('통원') || cat.includes('외래'))) return false;
         return true;
     });
 }
@@ -4991,32 +4996,35 @@ function renderGapSection(gaps) {
     return `<div class="gap-section"><div class="gap-title-bar">📌 추가 가입 권유 <span style="font-size:12px;font-weight:400;color:#92400e;">(${items.length}개 항목)</span></div>${rows}</div>`;
 }
 
-const _INSURER_LINKS = [
-    ['삼성화재', '삼성화재', 'https://www.samsungfire.com/serviceCenter/clause/clause.do'],
-    ['삼성생명', '삼성생명', 'https://www.samsunglife.com/individual/info/contract/clause/listClauses.do'],
-    ['삼성',    '삼성생명', 'https://www.samsunglife.com/individual/info/contract/clause/listClauses.do'],
-    ['한화손보', '한화손해보험', 'https://www.hwgeneralins.com/customer/provision/provision.do'],
-    ['한화생명', '한화생명', 'https://www.hanwhalife.com/consumer/cs/clause/clause_list.do'],
-    ['한화',    '한화생명', 'https://www.hanwhalife.com/consumer/cs/clause/clause_list.do'],
-    ['현대해상', '현대해상', 'https://www.hi.co.kr/consumer/info/clause/list.do'],
-    ['메리츠',  '메리츠화재', 'https://www.meritzfire.com/customer/policy/list.do'],
-    ['KB손보',  'KB손해보험', 'https://www.kbinsure.co.kr/CG302120001.ec'],
-    ['KB생명',  'KB생명', 'https://www.kblife.co.kr/customer/service/contractClause.do'],
-    ['KB',      'KB손해보험', 'https://www.kbinsure.co.kr/CG302120001.ec'],
-    ['DB',      'DB손해보험', 'https://www.idbins.com/fmcs/fmcs040100.do'],
-    ['롯데',    '롯데손해보험', 'https://www.lotteins.co.kr/html/consumer/clause/list.do'],
-    ['흥국',    '흥국화재', 'https://www.heungkukfire.co.kr/webcs/cscenter/clause/clauseList.do'],
-    ['교보',    '교보생명', 'https://www.kyobo.co.kr/main/customer/service/clause'],
-    ['신한',    '신한라이프', 'https://www.shinhanlife.co.kr/hp/cmf/cust/ClauseSearch.do'],
-    ['동양',    '동양생명', 'https://www.myangel.co.kr/service/contract/clause/list.do'],
-    ['라이나',  '라이나생명', 'https://www.lina.co.kr/customer/policy_list.asp'],
-    ['미래에셋', '미래에셋생명', 'https://life.miraeasset.com/customer/clause/list.do'],
-    ['푸본현대', '푸본현대생명', 'https://www.fubonhyundai.com/customer/clause/list.do'],
+// 보험사 메인 홈페이지만 — 약관 상세 URL은 자주 바뀌므로 메인으로 연결
+const _INSURER_MAIN = [
+    ['삼성화재', '삼성화재', 'https://www.samsungfire.com'],
+    ['삼성생명', '삼성생명', 'https://www.samsunglife.com'],
+    ['삼성',    '삼성생명', 'https://www.samsunglife.com'],
+    ['한화손보', '한화손해보험', 'https://www.hwgeneralins.com'],
+    ['한화생명', '한화생명', 'https://www.hanwhalife.com'],
+    ['한화',    '한화생명', 'https://www.hanwhalife.com'],
+    ['현대해상', '현대해상', 'https://www.hi.co.kr'],
+    ['메리츠',  '메리츠화재', 'https://www.meritzfire.com'],
+    ['KB손보',  'KB손해보험', 'https://www.kbinsure.co.kr'],
+    ['KB생명',  'KB생명', 'https://www.kblife.co.kr'],
+    ['KB',      'KB손해보험', 'https://www.kbinsure.co.kr'],
+    ['DB',      'DB손해보험', 'https://www.idbins.com'],
+    ['롯데',    '롯데손해보험', 'https://www.lotteins.co.kr'],
+    ['흥국',    '흥국화재', 'https://www.heungkukfire.co.kr'],
+    ['교보',    '교보생명', 'https://www.kyobo.co.kr'],
+    ['신한라이프','신한라이프', 'https://www.shinhanlife.co.kr'],
+    ['신한',    '신한라이프', 'https://www.shinhanlife.co.kr'],
+    ['동양',    '동양생명', 'https://www.myangel.co.kr'],
+    ['라이나',  '라이나생명', 'https://www.lina.co.kr'],
+    ['미래에셋', '미래에셋생명', 'https://life.miraeasset.com'],
+    ['AIA',     'AIA생명', 'https://www.aia.co.kr'],
+    ['푸본현대', '푸본현대생명', 'https://www.fubon-hyundai.co.kr'],
 ];
 
 function _matchInsurerLink(insurer, product) {
     const s = (insurer + ' ' + product).trim();
-    for (const [key, name, url] of _INSURER_LINKS) {
+    for (const [key, name, url] of _INSURER_MAIN) {
         if (s.includes(key)) return { name, url };
     }
     return null;
@@ -5059,16 +5067,15 @@ async function loadPolicyChunk(btn) {
                     <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:8px;">
                         📋 내부 DB에 약관이 없습니다. 아래에서 확인하세요:
                     </div>
-                    ${_ins ? `<div style="font-size:12px;color:#555;margin-bottom:6px;">보험사: <strong>${_ins.name}</strong></div>` : ''}
                     <div style="display:flex;flex-direction:column;gap:6px;">
                         ${_ins ? `
                         <a href="${_ins.url}" target="_blank" rel="noopener"
-                           style="font-size:12px;color:#fff;background:#0064FF;text-decoration:none;padding:7px 10px;border-radius:6px;display:flex;align-items:center;gap:6px;font-weight:600;">
-                            🔗 ${_ins.name} 약관 페이지 바로가기
+                           style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #0064FF;border-radius:6px;display:flex;align-items:center;gap:6px;font-weight:600;">
+                            🏢 ${_ins.name} 홈페이지 → 고객센터 &gt; 약관
                         </a>` : ''}
                         <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143" target="_blank" rel="noopener"
                            style="font-size:12px;color:#0064FF;text-decoration:none;padding:6px 10px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                            📑 금감원 표준약관 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
+                            📑 금감원 보험상품자료(약관) 검색
                         </a>
                     </div>
                     <div style="font-size:11px;color:#999;margin-top:8px;">
@@ -5086,11 +5093,11 @@ async function loadPolicyChunk(btn) {
                     ${_ins ? `
                     <a href="${_ins.url}" target="_blank" rel="noopener"
                        style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #0064FF;border-radius:6px;text-decoration:none;font-weight:600;">
-                        🔗 ${_ins.name} 약관 페이지 바로가기
+                        🏢 ${_ins.name} 홈페이지 → 고객센터 &gt; 약관
                     </a>` : ''}
                     <a href="https://www.fss.or.kr/fss/bbs/B0000115/list.do?menuNo=200143" target="_blank" rel="noopener"
                        style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;text-decoration:none;">
-                        📑 금감원 표준약관 <span style="font-size:10px;color:#94a3b8;">→ '${riderName}' 검색</span>
+                        📑 금감원 보험상품자료(약관) 검색
                     </a>
                 </div>
             </div>`;
