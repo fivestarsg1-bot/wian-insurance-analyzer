@@ -4521,8 +4521,10 @@ async function analyze() {
                 }
 
                 if (!hasHosp) {
-                    // 외래/통원: 입원 관련 특약 강제 보장제한
-                    if (DAILY_RE.test(nm) || HOSP_RE.test(nm)) {
+                    // 외래/통원: '입원' 포함 + '통원'/'외래' 미포함 → 보장제한
+                    const nmHasInp = nm.includes('입원');
+                    const nmHasOut = nm.includes('통원') || nm.includes('외래');
+                    if (nmHasInp && !nmHasOut) {
                         ra.estimated_amount   = 0;
                         ra.final_amount       = 0;
                         ra.coverage_status    = '보장제한';
@@ -4530,13 +4532,15 @@ async function analyze() {
                         ra.reason             = '외래/통원 케이스 — 입원 특약 해당 없음';
                     }
                 } else {
-                    // 입원: 외래/통원 전용 특약 강제 보장제한
-                    if (OUTPAT_RE.test(nm) && !DAILY_RE.test(nm) && !HOSP_RE.test(nm)) {
+                    // 입원: '통원'/'외래' 포함 + '입원' 미포함 → 보장제한
+                    const nmHasOut = nm.includes('통원') || nm.includes('외래');
+                    const nmHasInp = nm.includes('입원');
+                    if (nmHasOut && !nmHasInp) {
                         ra.estimated_amount   = 0;
                         ra.final_amount       = 0;
                         ra.coverage_status    = '보장제한';
                         ra.amount_description = '입원 치료 (미해당)';
-                        ra.reason             = '입원 케이스 — 외래 전용 특약 해당 없음';
+                        ra.reason             = '입원 케이스 — 외래/통원 전용 특약 해당 없음';
                     }
                 }
                 if (hospNoDays) {
