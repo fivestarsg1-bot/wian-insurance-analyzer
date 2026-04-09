@@ -4924,29 +4924,24 @@ async function loadPolicyChunk(btn) {
         const chunks = data.chunks || [];
 
         if (chunks.length === 0) {
-            // 보험사명 추출
             const insurerMap = {
-                '삼성':'삼성생명','한화':'한화생명','교보':'교보생명',
-                'KB':'KB손해보험','현대해상':'현대해상','메리츠':'메리츠화재',
-                '흥국':'흥국화재','DB':'DB손해보험','롯데':'롯데손해보험',
-                '신한':'신한라이프','동양':'동양생명','라이나':'라이나생명',
-                '푸본현대':'푸본현대생명'
+                '삼성': '삼성생명', '한화': '한화생명', '교보': '교보생명',
+                '메리츠': '메리츠화재', 'KB': 'KB손해보험', '현대해상': '현대해상',
+                '흥국': '흥국화재', 'DB': 'DB손해보험', '롯데': '롯데손해보험',
+                '신한': '신한라이프', '동양': '동양생명', '라이나': '라이나생명',
+                '푸본현대': '푸본현대생명'
             };
-            let insurerName = insurer;
-            if (!insurerName) {
-                for (const [key, val] of Object.entries(insurerMap)) {
-                    if (product.includes(key)) { insurerName = val; break; }
-                }
+            let insurerName = '';
+            for (const [key, val] of Object.entries(insurerMap)) {
+                if (product && product.includes(key)) { insurerName = val; break; }
             }
 
-            const encRider   = encodeURIComponent(riderName);
-            const encProduct = encodeURIComponent(product || riderName);
-            const kidiUrl    = `https://www.kidi.or.kr/user/nd63895.do?View&uQ=&pageST=SUBJECT&pageSV=${encRider}&pageSO=DESC&page=1`;
-            const lifeUrl    = `https://www.klia.or.kr/consumer/policy/policyList.do?searchWord=${encProduct}`;
-            const nonlifeUrl = `https://www.knia.or.kr/consumer/clauses/search?searchKeyword=${encProduct}`;
+            const kidiUrl    = `https://www.kidi.or.kr/user/nd63895.do?View&uQ=&pageST=SUBJECT&pageSV=${encodeURIComponent(riderName)}&pageSO=DESC&page=1`;
+            const lifeUrl    = `https://www.klia.or.kr/consumer/policy/policyList.do?searchWord=${encodeURIComponent(product || riderName)}`;
+            const nonlifeUrl = `https://www.knia.or.kr/consumer/clauses/search?searchKeyword=${encodeURIComponent(product || riderName)}`;
 
             resultDiv.innerHTML = `
-                <div style="padding:10px;background:#fffbf0;border-left:3px solid #f59e0b;border-radius:4px;">
+                <div style="padding:10px;background:#fffbf0;border-left:3px solid #f59e0b;border-radius:4px;margin-top:8px;">
                     <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:8px;">
                         📋 내부 DB에 약관이 없습니다. 아래에서 확인하세요:
                     </div>
