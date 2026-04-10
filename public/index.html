@@ -1795,8 +1795,6 @@ async function _receiptFetch(body, timeoutMs = 90000) {
 }
 
 async function analyzeReceipts() {
-    const apiKey = localStorage.getItem('api_key');
-    if (!apiKey) { toast('API 키를 먼저 입력해주세요.'); return; }
     if (!receiptFiles.length) return;
 
     const btn      = document.getElementById('receiptAnalyzeBtn');
@@ -6274,9 +6272,6 @@ async function ctHandleFile(file) {
     const isImg = /^image\/(jpeg|jpg|png)/.test(file.type);
     if (!isPDF && !isImg) { toast('PDF, JPG, PNG 파일만 지원합니다.'); return; }
 
-    const apiKey = localStorage.getItem('api_key');
-    if (!apiKey) { toast('API 키를 먼저 설정해주세요.'); return; }
-
     const msgEl  = document.getElementById('ctUploadMsg');
     const progEl = document.getElementById('ctUploadProgress');
     const progMsgEl = document.getElementById('ctUploadProgressMsg');
@@ -6287,12 +6282,12 @@ async function ctHandleFile(file) {
     try {
         let result;
         if (isImg) {
-            result = await ctExtractFromImage(file, apiKey);
+            result = await ctExtractFromImage(file);
         } else {
             progMsgEl.textContent = 'PDF 텍스트 추출 중…';
             const text = await ctExtractPDFText(file);
             progMsgEl.textContent = 'AI 분석 중…';
-            result = await ctExtractFromText(text, apiKey);
+            result = await ctExtractFromText(text);
         }
         ctApplyOcrResult(result);
         progEl.style.display = 'none';
@@ -6319,7 +6314,7 @@ async function ctExtractPDFText(file) {
 const _CT_SYSTEM = `보험증권, 보장분석표, 보험 안내장에서 다음 JSON만 출력하세요 (다른 텍스트 절대 금지):
 {"insurer":"보험사명","product_name":"상품명","contract_date":"YYYY-MM-DD 또는 null","expiry_date":"YYYY-MM-DD 또는 null","insured_name":"피보험자 또는 null","policyholder":"계약자 또는 null","premium_monthly":월납보험료숫자또는null,"silson_generation":"1세대/2세대/3세대/4세대 또는 null","policy_number":"증권번호 또는 null","coverages":[{"category":"실비/수술비/진단비/입원비/사망/기타","coverage_name":"특약명","coverage_amount":보장금액숫자또는null}]}`;
 
-async function ctExtractFromImage(file, apiKey) {
+async function ctExtractFromImage(file) {
     if (file.size > 5 * 1024 * 1024) throw new Error('이미지는 5MB 이하여야 합니다.');
     const base64 = await fileToBase64(file);
     const mediaType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
@@ -6333,7 +6328,7 @@ async function ctExtractFromImage(file, apiKey) {
     return parseAPIJson(data);
 }
 
-async function ctExtractFromText(text, apiKey) {
+async function ctExtractFromText(text) {
     const trimmed = text.slice(0, 12000);
     const data = await apiFetch('/api/messages', {
         model: 'claude-sonnet-4-20250514', max_tokens: 2000, system: _CT_SYSTEM,
