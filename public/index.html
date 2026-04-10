@@ -1290,6 +1290,24 @@
                     <select class="form-control" id="ctStatus"><option>정상</option><option>실효</option><option>해지</option></select>
                 </div>
             </div>
+            <!-- 약관 PDF 업로드 (선택) -->
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:8px;">
+                    📄 약관 PDF 업로드
+                    <span style="font-size:11px;color:#999;font-weight:400;">(선택 — 업로드하면 정확한 약관 기반 분석 가능)</span>
+                </div>
+                <div id="clausePdfDrop"
+                     onclick="document.getElementById('clausePdfInput').click()"
+                     style="border:2px dashed #ddd;border-radius:8px;padding:14px;text-align:center;
+                            cursor:pointer;color:#999;font-size:13px;transition:border-color 0.2s;"
+                     onmouseover="this.style.borderColor='#0064FF'"
+                     onmouseout="this.style.borderColor='#ddd'">
+                    PDF 파일을 드래그하거나 클릭해서 업로드
+                </div>
+                <input type="file" id="clausePdfInput" accept=".pdf" style="display:none"
+                       onchange="handleClausePdfUpload(this.files[0]); this.value=''">
+                <div id="clausePdfStatus" style="margin-top:8px;font-size:12px;"></div>
+            </div>
             <div class="db-modal-footer">
                 <button class="btn btn-outline btn-sm" onclick="closeContractForm()">취소</button>
                 <button class="btn btn-primary btn-sm" onclick="submitContractForm()">저장</button>
@@ -4327,6 +4345,17 @@ async function analyze() {
         ? '\n[진료 형태: 입원]\n현재 케이스는 입원 진료입니다.\n⚠️ 외래·통원 전용 특약(통원의료비, 외래의료비, 통원실손 등)은 이번 입원에서 보장되지 않습니다.\n해당 특약은 반드시 coverage_status="보장제한"으로 분류하고 reason에 "입원 케이스 — 외래 전용 특약 해당 없음"이라고 명시할 것.'
         : '\n[진료 형태: 외래/통원]\n현재 케이스는 외래/통원 진료입니다.\n⚠️ 입원 관련 특약(질병입원일당, 상해입원일당, 입원비, 입원의료비 등)은 이번 외래 진료에서 보장되지 않습니다.\n해당 특약은 반드시 coverage_status="보장제한"으로 분류하고 reason에 "외래/통원 케이스 — 입원 특약 해당 없음"이라고 명시할 것.';
 
+    // 고객 계약 약관 청크 로드
+    let custClauseCtx = '';
+    if (_calcCustId) {
+        const clauseChunks = await loadCustomerPolicyChunks(_calcCustId, diagnosis + ' ' + (hasSurg ? document.getElementById('surgName').value.trim() : ''));
+        if (clauseChunks.length) {
+            custClauseCtx = '\n\n=== 고객 보유 약관 원문 (최우선 참조) ===\n' +
+                clauseChunks.map(c => `[${c.doc_name}]\n${c.chunk_text}`).join('\n\n---\n\n') +
+                '\n위 약관 원문이 있으면 반드시 이를 기준으로 판단하고 근거 조항을 명시할 것.';
+        }
+    }
+
     const rag       = await buildRAGContext(diagnosis, riders);
     const prec      = await buildPrecedentContext(diagnosis, riders);
     const surgCtx   = buildSurgContext();
@@ -4354,7 +4383,7 @@ async function analyze() {
         : '';
 
     // 공통 컨텍스트 (모든 배치에서 재사용)
-    const baseCtx = `${custDbCtx}[기준일: ${today}]\n[진단·치료]\n진단명: ${diagnosis} / 수술: ${surgText} / 입원: ${hospText}\n기타: ${document.getElementById('otherTx').value.trim()||'없음'} / 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${treatTypeCtx}${surgCtx}${surgClassCtx}${custSurgCtx}${surgDBCtx}${rag.text}${prec.text}${silsonCtx}`;
+    const baseCtx = `${custDbCtx}[기준일: ${today}]\n[진단·치료]\n진단명: ${diagnosis} / 수술: ${surgText} / 입원: ${hospText}\n기타: ${document.getElementById('otherTx').value.trim()||'없음'} / 경위: ${document.getElementById('accDetail').value.trim()||'없음 (질병)'}${treatTypeCtx}${surgCtx}${surgClassCtx}${custSurgCtx}${surgDBCtx}${rag.text}${prec.text}${silsonCtx}${custClauseCtx}`;
 
     // 배치 분할
     const batches = [];
@@ -5117,6 +5146,9 @@ async function loadPolicyChunk(btn) {
                 <div style="padding:10px;background:#fffbf0;border-left:3px solid #f59e0b;border-radius:4px;margin-top:8px;">
                     <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:4px;">
                         📋 내부 DB에 약관이 없습니다. 아래에서 확인하세요:
+                    </div>
+                    <div style="font-size:11px;color:#6b7280;margin-bottom:8px;padding:6px 8px;background:#fafafa;border-radius:6px;">
+                        💡 <b>약관 PDF</b>가 있으면 <b>보유보험 탭 → 계약 추가 → 약관 PDF 업로드</b>에서 등록하면 다음 분석부터 자동으로 약관 기반 판단이 적용됩니다.
                     </div>
                     ${_policyLinksHtml(_ins)}
                     <div style="font-size:11px;color:#999;margin-top:8px;">
@@ -6254,7 +6286,12 @@ function openContractForm(contractOrNull) {
     document.getElementById('contractFormModal').classList.add('open');
 }
 
-function closeContractForm() { document.getElementById('contractFormModal').classList.remove('open'); }
+function closeContractForm() {
+    document.getElementById('contractFormModal').classList.remove('open');
+    window._pendingClauseChunks = null;
+    const st = document.getElementById('clausePdfStatus');
+    if (st) st.innerHTML = '';
+}
 
 // ════════════════════════════════════════════════════════════
 // 계약 모달 — OCR 특약 자동 추출
@@ -6399,15 +6436,84 @@ async function submitContractForm() {
         }
     }
     try {
+        let contractId = _editContractId;
         if (_editContractId) {
             await dbFetch(`/api/contracts?id=${_editContractId}`, { method: 'PUT', body });
         } else {
-            await dbFetch('/api/contracts', { method: 'POST', body });
+            const contract = await dbFetch('/api/contracts', { method: 'POST', body });
+            contractId = contract?.id;
+        }
+        // 약관 PDF 청크가 있으면 함께 저장
+        if (window._pendingClauseChunks && contractId) {
+            await saveClauseChunks(contractId, _activeCustId, window._pendingClauseChunks);
         }
         toast('저장됐습니다.');
         closeContractForm();
         loadContracts();
     } catch(e) { toast(`오류: ${e.message}`); }
+}
+
+// ── 약관 PDF 업로드 처리 ─────────────────────────────────────
+async function handleClausePdfUpload(file) {
+    if (!file) return;
+    const statusEl = document.getElementById('clausePdfStatus');
+    statusEl.innerHTML = '<span style="color:#0064FF;">⏳ 약관 처리 중...</span>';
+    try {
+        const base64 = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(r.result.split(',')[1]);
+            r.onerror = rej;
+            r.readAsDataURL(file);
+        });
+        const data = await apiFetch('/api/messages', {
+            model: 'claude-sonnet-4-6', max_tokens: 4000,
+            messages: [{ role: 'user', content: [
+                { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+                { type: 'text', text: `이 보험 약관 PDF에서 보험금 지급 관련 핵심 조항들을 추출해줘.
+다음 JSON 형식으로만 응답:
+{"doc_name":"약관명(보험사+상품명)","chunks":[{"section":"조항명(예: 제3조 보험금 지급사유)","content":"해당 조항 전문"}]}
+보험금 지급사유, 면책조항, 수술 정의, 진단 정의, 실손 관련 조항 위주로 추출. JSON만 출력.` }
+            ]}]
+        });
+        const text = data.content?.[0]?.text || '';
+        const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+        if (!parsed.chunks?.length) throw new Error('조항 추출 실패');
+        window._pendingClauseChunks = parsed;
+        statusEl.innerHTML = `<span style="color:#16a34a;">✅ ${parsed.chunks.length}개 조항 추출 완료 — 계약 저장 시 함께 저장됩니다</span>`;
+    } catch(e) {
+        statusEl.innerHTML = `<span style="color:#dc2626;">❌ 오류: ${e.message}</span>`;
+    }
+}
+
+async function saveClauseChunks(contractId, customerId, parsed) {
+    const rows = parsed.chunks.map((chunk, idx) => ({
+        contract_id: contractId,
+        customer_id: customerId || undefined,
+        doc_name:    parsed.doc_name || '약관',
+        doc_id:      `contract_${contractId}`,
+        chunk_text:  `[${chunk.section}]\n${chunk.content}`,
+        chunk_index: idx,
+    }));
+    // 기존 청크 삭제 후 재저장 (계약 편집 시 중복 방지)
+    await dbProxy('DELETE', 'policy_chunks', { filter: `contract_id=eq.${contractId}` });
+    await dbProxy('POST', 'policy_chunks', { body: rows });
+    window._pendingClauseChunks = null;
+}
+
+async function loadCustomerPolicyChunks(customerId, query) {
+    try {
+        const rows = await dbProxy('GET', 'policy_chunks', {
+            filter: `customer_id=eq.${customerId}&limit=20`,
+        });
+        if (!Array.isArray(rows) || !rows.length) return [];
+        const kws = (query || '').toLowerCase().split(/\s+/).filter(Boolean);
+        const scored = rows.map(c => ({
+            ...c,
+            _score: kws.filter(kw => (c.chunk_text || '').toLowerCase().includes(kw)).length,
+        }));
+        const relevant = scored.filter(c => c._score > 0).sort((a, b) => b._score - a._score);
+        return (relevant.length ? relevant : rows).slice(0, 5);
+    } catch(e) { return []; }
 }
 
 async function confirmDeleteContract(id) {
