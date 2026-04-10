@@ -5018,9 +5018,26 @@ const allInsurerLinks = {
 // 보험사명/상품명에서 보험사 매칭
 function getInsurerLink(insurer, product) {
     const s = (insurer + ' ' + (product || '')).trim();
+    if (!s) return null;
+    // 1차: 정확한 전체 이름 매칭
     for (const [name, url] of Object.entries(allInsurerLinks)) {
-        const key = name.replace('생명','').replace('화재','').replace('손해보험','').replace('라이프','');
-        if (key && s.includes(key)) return { name, url };
+        if (s.includes(name)) return { name, url };
+    }
+    // 2차: 약식명 → 정식명 매핑
+    const abbr = [
+        ['삼성화재', '삼성화재'], ['삼성생명', '삼성생명'],
+        ['한화손보', '한화손해보험'], ['한화생명', '한화생명'],
+        ['현대해상', '현대해상'], ['메리츠', '메리츠화재'],
+        ['KB손보', 'KB손해보험'], ['KB생명', 'KB생명'],
+        ['DB손보', 'DB손해보험'], ['DB생명', 'DB생명'],
+        ['롯데손보', '롯데손해보험'], ['흥국화재', '흥국화재'], ['흥국생명', '흥국생명'],
+        ['교보생명', '교보생명'], ['신한라이프', '신한라이프'], ['신한생명', '신한라이프'],
+        ['동양생명', '동양생명'], ['라이나', '라이나생명'],
+        ['미래에셋', '미래에셋생명'], ['AIA', 'AIA생명'],
+        ['푸본', '푸본현대생명'], ['농협생명', '농협생명'], ['농협손해', '농협손해보험'],
+    ];
+    for (const [kw, name] of abbr) {
+        if (s.includes(kw) && allInsurerLinks[name]) return { name, url: allInsurerLinks[name] };
     }
     return null;
 }
