@@ -4981,37 +4981,64 @@ function renderGapSection(gaps) {
     return `<div class="gap-section"><div class="gap-title-bar">📌 추가 가입 권유 <span style="font-size:12px;font-weight:400;color:#92400e;">(${items.length}개 항목)</span></div>${rows}</div>`;
 }
 
-// 보험사명 추출용 키워드 맵
-const _INSURER_KW = [
-    ['삼성화재', '삼성화재'], ['삼성생명', '삼성생명'], ['삼성', '삼성생명'],
-    ['한화손보', '한화손해보험'], ['한화생명', '한화생명'], ['한화', '한화생명'],
-    ['현대해상', '현대해상'], ['메리츠', '메리츠화재'],
-    ['KB손보', 'KB손해보험'], ['KB생명', 'KB생명보험'], ['KB', 'KB손해보험'],
-    ['DB', 'DB손해보험'], ['롯데', '롯데손해보험'], ['흥국', '흥국화재'],
-    ['교보', '교보생명'], ['신한라이프', '신한라이프'], ['신한', '신한라이프'],
-    ['동양', '동양생명'], ['라이나', '라이나생명'], ['미래에셋', '미래에셋생명'],
-    ['AIA', 'AIA생명'], ['푸본', '푸본현대생명'], ['농협', '농협생명'],
-];
+// 보험사별 약관/공시실 직접 링크
+const allInsurerLinks = {
+    '한화생명':   'https://www.hanwhalife.com/main/disclosure/goods/disclosurenotice/DF_GDDN000_P10000.do',
+    '교보생명':   'https://www.kyobo.com/dgt/web/product-official/information',
+    '삼성생명':   'https://www.samsunglife.com/individual/products/disclosure/sales/PDO-PRPRI010110M',
+    '신한라이프': 'https://www.shinhanlife.co.kr/hp/cdhi0030.do',
+    '동양생명':   'https://pbano.myangel.co.kr/paging/WE_AC_WEPAAP020100L',
+    'KB생명':     'https://www.kblife.co.kr',
+    '미래에셋생명': 'https://life.miraeasset.com',
+    '라이나생명': 'https://www.lina.co.kr',
+    'AIA생명':    'https://www.aia.co.kr',
+    '푸본현대생명': 'https://www.fubon-hyundai.co.kr',
+    '흥국생명':   'https://www.heungkuklife.co.kr',
+    'DB생명':     'https://www.idblife.com',
+    '하나생명':   'https://www.hanalife.co.kr',
+    '농협생명':   'https://www.nhlife.co.kr',
+    'KDB생명':    'https://www.kdblife.co.kr',
+    '처브라이프': 'https://www.chubblife.co.kr',
+    '메트라이프': 'https://www.metlife.co.kr',
+    '오렌지라이프': 'https://www.shinhanlife.co.kr/hp/cdhi0030.do',
+    '삼성화재':   'https://www.samsungfire.com',
+    '현대해상':   'https://www.hi.co.kr',
+    '메리츠화재': 'https://www.meritzfire.com',
+    'KB손해보험': 'https://www.kbinsure.co.kr',
+    '한화손해보험': 'https://www.hwgeneralins.com',
+    'DB손해보험': 'https://www.idbins.com',
+    '롯데손해보험': 'https://www.lotteins.co.kr',
+    '흥국화재':   'https://www.heungkukfire.co.kr',
+    '하나손해보험': 'https://www.hanainsure.co.kr',
+    '캐롯손해보험': 'https://www.carrotins.com',
+    'AXA손해보험': 'https://www.axa.co.kr',
+    '농협손해보험': 'https://www.nhnonghyup.com',
+};
 
-function _matchInsurerName(insurer, product) {
-    const s = (insurer + ' ' + product).trim();
-    for (const [key, name] of _INSURER_KW) {
-        if (s.includes(key)) return name;
+// 보험사명/상품명에서 보험사 매칭
+function getInsurerLink(insurer, product) {
+    const s = (insurer + ' ' + (product || '')).trim();
+    for (const [name, url] of Object.entries(allInsurerLinks)) {
+        const key = name.replace('생명','').replace('화재','').replace('손해보험','').replace('라이프','');
+        if (key && s.includes(key)) return { name, url };
     }
     return null;
 }
 
-function _policyLinksHtml(insurerName) {
+function _policyLinksHtml(ins) {
+    // ins: { name, url } 또는 null
     return `
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;">
             <div style="font-size:11px;color:#999;margin-bottom:6px;">
-                📎 약관 원문 찾기 <span style="color:#aaa;">(보험사 고객센터 → 약관 메뉴)</span>
+                📎 약관 원문 찾기
             </div>
             <div style="display:flex;flex-direction:column;gap:5px;">
-                ${insurerName ? `
-                <div style="font-size:12px;padding:6px 10px;background:#f8f9ff;border-radius:6px;color:#555;">
-                    💡 <strong>${insurerName}</strong> → 고객센터 앱/홈페이지 → <strong>약관·증권 메뉴</strong>
-                </div>` : ''}
+                ${ins ? `
+                <a href="${ins.url}" target="_blank" rel="noopener"
+                   style="display:block;font-size:12px;color:#fff;padding:7px 12px;
+                          background:#0064FF;border-radius:6px;text-decoration:none;font-weight:600;">
+                    🔗 ${ins.name} 약관/공시실 바로가기
+                </a>` : ''}
                 <a href="https://pub.insure.or.kr" target="_blank" rel="noopener"
                    style="font-size:12px;color:#0064FF;padding:5px 8px;border:1px solid #dde;border-radius:6px;text-decoration:none;">
                     📊 생명보험협회 공시실
@@ -5035,7 +5062,7 @@ async function loadPolicyChunk(btn) {
     const riderName  = btn.dataset.rider   || '';
     const product    = btn.dataset.product || '';
     const insurer    = btn.dataset.insurer || '';
-    const _insurerName = _matchInsurerName(insurer, product);
+    const _ins = getInsurerLink(insurer, product);
 
     // 토글: 열려 있으면 닫기
     if (resultDiv.style.display !== 'none') {
@@ -5065,7 +5092,7 @@ async function loadPolicyChunk(btn) {
                     <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:4px;">
                         📋 내부 DB에 약관이 없습니다. 아래에서 확인하세요:
                     </div>
-                    ${_policyLinksHtml(_insurerName)}
+                    ${_policyLinksHtml(_ins)}
                     <div style="font-size:11px;color:#999;margin-top:8px;">
                         💡 해당 약관을 PDF로 저장 후 약관DB에 추가하면 다음부터 자동으로 표시됩니다.
                     </div>
@@ -5074,7 +5101,7 @@ async function loadPolicyChunk(btn) {
             return;
         }
 
-        const extLinksHtml = _policyLinksHtml(_insurerName);
+        const extLinksHtml = _policyLinksHtml(_ins);
         resultDiv.innerHTML = chunks.map(c => {
             const text = c.chunk_text || '';
             const preview  = text.substring(0, 300);
