@@ -5099,7 +5099,18 @@ async function loadPolicyChunk(btn) {
             headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
             body:    JSON.stringify({ query, top_k: 2 })
         });
-        if (!res.ok) throw new Error('검색 실패');
+        if (!res.ok) {
+            // 인증 오류 등 — 링크는 항상 표시
+            resultDiv.innerHTML = `
+                <div style="padding:10px;background:#fff8f0;border-left:3px solid #f59e0b;border-radius:4px;margin-top:8px;">
+                    <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:4px;">
+                        📋 내부 DB 조회 불가. 아래에서 직접 확인하세요:
+                    </div>
+                    ${_policyLinksHtml(_ins)}
+                </div>`;
+            btn.innerHTML = '📋 외부 약관 링크 ▲ 접기';
+            return;
+        }
         const data   = await res.json();
         const chunks = data.chunks || [];
 
@@ -5137,8 +5148,14 @@ async function loadPolicyChunk(btn) {
         btn.innerHTML = '📄 약관 조항 ▲ 접기';
 
     } catch (e) {
-        resultDiv.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">약관 검색 중 오류 발생</div>';
-        btn.innerHTML = '📄 약관 조항 보기';
+        resultDiv.innerHTML = `
+            <div style="padding:10px;background:#fff8f0;border-left:3px solid #f59e0b;border-radius:4px;margin-top:8px;">
+                <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:4px;">
+                    📋 내부 DB 조회 실패. 아래에서 직접 확인하세요:
+                </div>
+                ${_policyLinksHtml(_ins)}
+            </div>`;
+        btn.innerHTML = '📋 외부 약관 링크 ▲ 접기';
     }
 }
 
