@@ -14,8 +14,6 @@
     }
   ],
   "functions": {
-    "api/apikey.js":           { "maxDuration": 10 },
-    "api/clause-extract.js":  { "maxDuration": 60 },
     "api/auth.js":             { "maxDuration": 10 },
     "api/messages.js":         { "maxDuration": 60 },
     "api/rag-upload.js":       { "maxDuration": 60 },

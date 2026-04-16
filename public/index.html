@@ -6475,16 +6475,15 @@ async function handleClausePdfUploadMultiple(files) {
                 r.onerror = rej;
                 r.readAsDataURL(file);
             });
-            const resp = await fetch('/api/clause-extract', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
-                body: JSON.stringify({ pdf: base64, filename: file.name })
+            const data = await apiFetch('/api/messages', {
+                model: 'claude-sonnet-4-5-20251001', max_tokens: 4000,
+                messages: [{ role: 'user', content: [
+                    { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+                    { type: 'text', text: '이 보험 약관에서 보험금 지급사유, 면책조항, 수술 정의, 진단 정의, 실손 지급기준 조항만 추출해줘.\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용"}]}\nJSON만 출력.' }
+                ]}]
             });
-            if (!resp.ok) {
-                const e = await resp.json().catch(() => ({}));
-                throw new Error(e.error || `서버 오류 ${resp.status}`);
-            }
-            const parsed = await resp.json();
+            const text = data.content?.[0]?.text || '';
+            const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
             allParsed.push(parsed);
             statusEl.innerHTML += `<br><span style="color:#16a34a;">✅ ${parsed.doc_name}: ${parsed.chunks.length}개 조항</span>`;
         } catch(e) {
