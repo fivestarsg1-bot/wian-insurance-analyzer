@@ -6494,9 +6494,9 @@ async function handleClausePdfUploadMultiple(files) {
                 data = await _extractClausePdf(base64);
             } catch(e) {
                 if (e.message.includes('429')) {
-                    statusEl.innerHTML += `<br><span style="color:#f59e0b;">⚠️ Rate limit — 60초 대기 후 재시도...</span>`;
-                    await new Promise(r => setTimeout(r, 60000));
-                    data = await _extractClausePdf(base64);
+                    statusEl.innerHTML += `<br><span style="color:#f59e0b;">⚠️ Rate limit — 15초 후 재시도...</span>`;
+                    await new Promise(r => setTimeout(r, 15000));
+                    data = await _extractClausePdf(base64); // 재시도 실패 시 catch로 스킵
                 } else { throw e; }
             }
             const text = data.content?.[0]?.text || '';
