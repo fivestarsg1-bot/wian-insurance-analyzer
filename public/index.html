@@ -6286,6 +6286,9 @@ function openContractForm(contractOrNull) {
     document.getElementById('ctOcrSection').style.display = 'none';
     document.getElementById('ctUploadZone').classList.remove('drag-over');
     document.getElementById('contractFormModal').classList.add('open');
+    const st = document.getElementById('clausePdfStatus');
+    if (st) st.innerHTML = '';
+    window._pendingClauseChunks = null;
 }
 
 function closeContractForm() {
@@ -6505,15 +6508,14 @@ JSON 형식으로만:
 async function handleClausePdfUploadMultiple(files) {
     if (!files || files.length === 0) return;
     const statusEl = document.getElementById('clausePdfStatus');
-    statusEl.innerHTML = `<span style="color:#0064FF;">⏳ ${files.length}개 약관 처리 중... (1~2분 소요)</span>`;
 
-    let apiKey;
-    try {
-        apiKey = await _fetchApiKey();
-    } catch(e) {
-        statusEl.innerHTML = `<span style="color:#dc2626;">❌ ${e.message}</span>`;
+    const apiKey = getApiKey();
+    if (!apiKey) {
+        statusEl.innerHTML = '<span style="color:#dc2626;">❌ 로그아웃 후 재로그인하면 해결됩니다.</span>';
         return;
     }
+
+    statusEl.innerHTML = `<span style="color:#0064FF;">⏳ ${files.length}개 약관 처리 중... (1~2분 소요)</span>`;
 
     const allParsed = [];
     for (let i = 0; i < files.length; i++) {
