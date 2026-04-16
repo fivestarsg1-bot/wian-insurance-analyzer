@@ -6460,6 +6460,16 @@ async function submitContractForm() {
 }
 
 // ── 약관 PDF 업로드 처리 ─────────────────────────────────────
+async function _extractClausePdf(base64) {
+    return apiFetch('/api/messages', {
+        model: 'claude-sonnet-4-20250514', max_tokens: 2000,
+        messages: [{ role: 'user', content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+            { type: 'text', text: '보험금 지급사유와 면책조항만 JSON으로 추출.\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용(100자이내)"}]}\nJSON만.' }
+        ]}]
+    });
+}
+
 async function handleClausePdfUploadMultiple(files) {
     if (!files || files.length === 0) return;
     const statusEl = document.getElementById('clausePdfStatus');
@@ -6475,13 +6485,16 @@ async function handleClausePdfUploadMultiple(files) {
                 r.onerror = rej;
                 r.readAsDataURL(file);
             });
-            const data = await apiFetch('/api/messages', {
-                model: 'claude-sonnet-4-20250514', max_tokens: 4000,
-                messages: [{ role: 'user', content: [
-                    { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-                    { type: 'text', text: '이 보험 약관에서 보험금 지급사유, 면책조항, 수술 정의, 진단 정의, 실손 지급기준 조항만 추출해줘.\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용"}]}\nJSON만 출력.' }
-                ]}]
-            });
+            let data;
+            try {
+                data = await _extractClausePdf(base64);
+            } catch(e) {
+                if (e.message.includes('429')) {
+                    statusEl.innerHTML += `<br><span style="color:#f59e0b;">⚠️ 잠시 대기 후 재시도...</span>`;
+                    await new Promise(r => setTimeout(r, 3000));
+                    data = await _extractClausePdf(base64);
+                } else { throw e; }
+            }
             const text = data.content?.[0]?.text || '';
             const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
             allParsed.push(parsed);
