@@ -2029,7 +2029,8 @@ function _renderReceiptResultCard(merged) {
 // ════════════════════════════════════════════════════════════
 // Auth
 // ════════════════════════════════════════════════════════════
-function getToken() { return sessionStorage.getItem('access_token') || ''; }
+function getToken()  { return sessionStorage.getItem('access_token') || ''; }
+function getApiKey() { return sessionStorage.getItem('api_key') || ''; }
 
 async function checkAuth() {
     const token = getToken();
@@ -2049,8 +2050,9 @@ async function tryLogin(password) {
             body: JSON.stringify({ password })
         });
         if (!res.ok) return false;
-        const { token } = await res.json();
+        const { token, apiKey } = await res.json();
         sessionStorage.setItem('access_token', token);
+        if (apiKey) sessionStorage.setItem('api_key', apiKey);
         return true;
     } catch { return false; }
 }
@@ -6455,9 +6457,13 @@ async function submitContractForm() {
 
 // ── 약관 PDF 업로드 처리 ─────────────────────────────────────
 async function _fetchApiKey() {
+    const cached = getApiKey();
+    if (cached) return cached;
+    // 폴백: 기존 세션에 캐싱 안 된 경우
     const res = await fetch('/api/apikey', { headers: { 'x-access-token': getToken() } });
-    if (!res.ok) throw new Error('API 키 조회 실패');
+    if (!res.ok) throw new Error('다시 로그인 후 시도해주세요.');
     const { key } = await res.json();
+    sessionStorage.setItem('api_key', key);
     return key;
 }
 

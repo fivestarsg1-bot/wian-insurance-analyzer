@@ -41,5 +41,5 @@ module.exports = async (req, res) => {
         return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
     }
 
-    return res.status(200).json({ token: makeToken() });
+    return res.status(200).json({ token: makeToken(), apiKey: process.env.ANTHROPIC_API_KEY || '' });
 };
