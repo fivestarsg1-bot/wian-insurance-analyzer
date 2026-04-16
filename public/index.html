@@ -6460,14 +6460,40 @@ async function submitContractForm() {
 }
 
 // ── 약관 PDF 업로드 처리 ─────────────────────────────────────
+
+// PDF.js로 텍스트 추출 (바이너리 통째 전송 대신 → 토큰 90% 절감)
+async function _pdfBase64ToText(base64) {
+    if (!window.pdfjsLib) {
+        await new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+            s.onload = resolve; s.onerror = reject;
+            document.head.appendChild(s);
+        });
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const pdf = await window.pdfjsLib.getDocument({ data: bytes }).promise;
+    const maxPages = Math.min(pdf.numPages, 40);
+    let text = '';
+    for (let p = 1; p <= maxPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        text += content.items.map(i => i.str).join(' ') + '\n';
+    }
+    return text.slice(0, 24000); // ~8000토큰 상한
+}
+
 async function _extractClausePdf(base64) {
-    // Haiku: Sonnet 대비 TPM 한도 높음 → 대용량 PDF rate limit 완화
+    const pdfText = await _pdfBase64ToText(base64);
     return apiFetch('/api/messages', {
         model: 'claude-haiku-4-5-20251001', max_tokens: 1500,
-        messages: [{ role: 'user', content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-            { type: 'text', text: '보험금 지급사유와 면책조항만 JSON으로 추출.\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용(100자이내)"}]}\nJSON만.' }
-        ]}]
+        messages: [{ role: 'user', content:
+            `다음 보험약관 텍스트에서 보험금 지급사유와 면책조항만 JSON으로 추출.\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용(100자이내)"}]}\nJSON만 출력.\n\n${pdfText}`
+        }]
     });
 }
 
