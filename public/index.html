@@ -4732,6 +4732,7 @@ function renderResults(r, riderData, ragRefs = [], precRefs = [], precChunks = [
                         data-rider="${(ra.rider_name||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/>/g,'&gt;')}"
                         data-product="${(orig.product||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/>/g,'&gt;')}"
                         data-insurer="${(orig.insurer||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/>/g,'&gt;')}"
+                        data-cust-id="${_calcCustId||''}"
                         onclick="loadPolicyChunk(this)"
                         style="font-size:11px;color:#0064FF;background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">
                         📄 약관 조항 보기
@@ -5122,7 +5123,44 @@ async function loadPolicyChunk(btn) {
     resultDiv.style.display = 'block';
     resultDiv.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">약관 검색 중...</div>';
 
+    const custId = btn.dataset.custId || '';
+
     try {
+        // 1순위: 이 고객이 직접 업로드한 약관 청크 (policy_chunks)
+        let custChunks = [];
+        if (custId) {
+            const kw = (riderName || '').split(/[\s()]/)[0];
+            const cr = await fetch(`/api/db?table=policy_chunks&filter=${encodeURIComponent(`customer_id=eq.${custId}&limit=10`)}`, {
+                headers: { 'x-access-token': getToken() }
+            });
+            if (cr.ok) {
+                const all = await cr.json();
+                if (Array.isArray(all) && all.length) {
+                    // 라이더명 키워드로 관련 청크 우선
+                    custChunks = all
+                        .map(c => ({ ...c, _s: (c.chunk_text||'').includes(kw) ? 1 : 0 }))
+                        .sort((a, b) => b._s - a._s)
+                        .slice(0, 3);
+                }
+            }
+        }
+
+        if (custChunks.length) {
+            const extLinksHtml = _policyLinksHtml(_ins);
+            resultDiv.innerHTML = custChunks.map(c => {
+                const text = c.chunk_text || '';
+                const preview = text.substring(0, 300);
+                const overflow = text.length > 300 ? text.substring(300) : '';
+                return `<div style="margin-top:6px;padding:10px;background:#f0fff4;border-left:3px solid #16a34a;border-radius:4px;">
+                    <div style="font-size:11px;color:#16a34a;font-weight:600;margin-bottom:4px;">📄 ${c.doc_name||'약관'} <span style="font-weight:400;color:#6b7280;">(내 약관)</span></div>
+                    <div style="font-size:12px;color:#374151;line-height:1.7;">${preview}${overflow?`<span class="chunk-more" style="display:none;">${overflow}</span><button onclick="this.previousElementSibling.style.display='inline';this.style.display='none';" style="font-size:11px;color:#0064FF;background:none;border:none;cursor:pointer;">…더 보기</button>`:''}</div>
+                </div>`;
+            }).join('') + extLinksHtml;
+            btn.innerHTML = '📄 약관 조항 ▲ 접기';
+            return;
+        }
+
+        // 2순위: 공용 RAG 지식DB (고객 전용 약관 없을 때)
         const query = [riderName, product, insurer].filter(Boolean).join(' ');
         const res = await fetch('/api/rag-search', {
             method:  'POST',
@@ -5130,7 +5168,6 @@ async function loadPolicyChunk(btn) {
             body:    JSON.stringify({ query, top_k: 2 })
         });
         if (!res.ok) {
-            // 인증 오류 등 — 링크는 항상 표시
             resultDiv.innerHTML = `
                 <div style="padding:10px;background:#fff8f0;border-left:3px solid #f59e0b;border-radius:4px;margin-top:8px;">
                     <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:4px;">
@@ -6555,7 +6592,7 @@ async function saveClauseChunks(contractId, customerId) {
     for (const parsed of list) {
         const rows = parsed.chunks.map((chunk, idx) => ({
             contract_id: contractId,
-            customer_id: customerId || undefined,
+            customer_id: customerId || null,
             doc_name:    parsed.doc_name || '약관',
             doc_id:      `contract_${contractId}_${idx}`,
             chunk_text:  `[${chunk.section}]\n${chunk.content}`,
