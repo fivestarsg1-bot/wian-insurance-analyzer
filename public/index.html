@@ -3219,14 +3219,15 @@ async function handleKDBUpload(file) {
             const resp = await fetch('/api/clause-extract', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-access-token': token },
-                body: JSON.stringify({ images }),
+                body: JSON.stringify({ images, filename: name }),
             });
             if (!resp.ok) {
                 const e = await resp.json().catch(() => ({}));
                 throw new Error(e.error || `서버 오류 ${resp.status}`);
             }
             const parsed = await resp.json();
-            finalName = parsed.doc_name || name;
+            const docNameOk = parsed.doc_name && !parsed.doc_name.toLowerCase().includes('unknown');
+            finalName = docNameOk ? parsed.doc_name : name;
             finalText = parsed.chunks.map(c => `[${c.section}]\n${c.content}`).join('\n\n');
             pages = numPages;
         }
@@ -6588,7 +6589,7 @@ async function _pdfBase64ToText(base64, maxPages = 50) {
     return text.slice(0, 24000); // ~8000토큰 상한
 }
 
-async function _extractClausePdf(base64, maxPages = 50, preExtractedText = null) {
+async function _extractClausePdf(base64, maxPages = 50, preExtractedText = null, filename = '') {
     // 1. 텍스트 확인 (미리 추출된 텍스트가 있으면 재사용)
     let text = preExtractedText;
     if (text === null) {
@@ -6634,7 +6635,7 @@ async function _extractClausePdf(base64, maxPages = 50, preExtractedText = null)
 
     const resp = await fetch('/api/clause-extract', {
         method: 'POST', headers,
-        body: JSON.stringify({ images }),
+        body: JSON.stringify({ images, filename }),
     });
     if (resp.status === 429) throw new Error('요청 한도 초과(429): 잠시 후 다시 시도해주세요.');
     if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error || `HTTP ${resp.status}`); }
@@ -6678,12 +6679,12 @@ async function handleClausePdfUploadMultiple(files) {
 
             let data;
             try {
-                data = await _extractClausePdf(base64, effectivePages, extractedText);
+                data = await _extractClausePdf(base64, effectivePages, extractedText, file.name);
             } catch(e) {
                 if (e.message.includes('429')) {
                     statusEl.innerHTML += `<br><span style="color:#f59e0b;">⚠️ Rate limit — 15초 후 재시도...</span>`;
                     await new Promise(r => setTimeout(r, 15000));
-                    data = await _extractClausePdf(base64, effectivePages, extractedText);
+                    data = await _extractClausePdf(base64, effectivePages, extractedText, file.name);
                 } else { throw e; }
             }
             // _extractClausePdf는 서버에서 이미 파싱된 JSON 객체를 반환함

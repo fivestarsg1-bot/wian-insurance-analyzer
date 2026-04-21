@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: '요청 파싱 오류' });
     }
 
-    const { pdf, text, images } = body;
+    const { pdf, text, images, filename } = body;
 
     let messages, extraHeaders = {};
     let model = 'claude-haiku-4-5-20251001';
@@ -44,6 +44,7 @@ module.exports = async (req, res) => {
     if (images && Array.isArray(images) && images.length > 0) {
         // 스캔본: PDF.js로 렌더링한 JPEG 이미지 배열로 전달
         model = 'claude-sonnet-4-6';
+        const filenameHint = filename ? `\n파일명 힌트: "${filename}" (보험사/상품명 인식에 참고하세요)` : '';
         messages = [{
             role: 'user',
             content: [
@@ -53,7 +54,7 @@ module.exports = async (req, res) => {
                 })),
                 {
                     type: 'text',
-                    text: '이 보험약관 이미지들에서 보험금 지급사유와 면책조항만 추출하세요.\n반드시 JSON만 출력 (설명 금지).\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용(100자이내)"}]}'
+                    text: `이 보험약관 이미지들에서 보험금 지급사유와 면책조항만 추출하세요.${filenameHint}\n반드시 JSON만 출력 (설명 금지).\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용(100자이내)"}]}`
                 }
             ]
         }];
