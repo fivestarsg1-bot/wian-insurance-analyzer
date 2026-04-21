@@ -36,12 +36,30 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: '요청 파싱 오류' });
     }
 
-    const { pdf, text } = body;
+    const { pdf, text, images } = body;
 
     let messages, extraHeaders = {};
+    let model = 'claude-haiku-4-5-20251001';
 
-    if (pdf) {
-        // 스캔본: PDF를 document로 전달 → Claude 비전으로 읽기
+    if (images && Array.isArray(images) && images.length > 0) {
+        // 스캔본: PDF.js로 렌더링한 JPEG 이미지 배열로 전달
+        model = 'claude-sonnet-4-6';
+        messages = [{
+            role: 'user',
+            content: [
+                ...images.map(img => ({
+                    type: 'image',
+                    source: { type: 'base64', media_type: 'image/jpeg', data: img }
+                })),
+                {
+                    type: 'text',
+                    text: '이 보험약관 이미지들에서 보험금 지급사유와 면책조항만 추출하세요.\n반드시 JSON만 출력 (설명 금지).\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용(100자이내)"}]}'
+                }
+            ]
+        }];
+    } else if (pdf) {
+        // 구형 경로: PDF document 직접 전달 (소형 PDF용)
+        model = 'claude-sonnet-4-6';
         messages = [{
             role: 'user',
             content: [
@@ -63,11 +81,11 @@ module.exports = async (req, res) => {
             content: `다음 보험약관 텍스트에서 보험금 지급사유와 면책조항만 추출.\n반드시 JSON만 출력 (설명 금지).\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용(100자이내)"}]}\n\n${text}`
         }];
     } else {
-        return res.status(400).json({ error: 'pdf 또는 text 필드가 필요합니다.' });
+        return res.status(400).json({ error: 'images, pdf, text 중 하나가 필요합니다.' });
     }
 
     const reqBody = JSON.stringify({
-        model: pdf ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',
+        model,
         max_tokens: 2000,
         messages,
     });
