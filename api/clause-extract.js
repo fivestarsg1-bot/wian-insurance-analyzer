@@ -67,7 +67,7 @@ module.exports = async (req, res) => {
     }
 
     const reqBody = JSON.stringify({
-        model: pdf ? 'claude-sonnet-4-5-20251001' : 'claude-haiku-4-5-20251001',
+        model: pdf ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',
         max_tokens: 2000,
         messages,
     });
