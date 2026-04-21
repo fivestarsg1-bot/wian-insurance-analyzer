@@ -6560,21 +6560,27 @@ async function _extractClausePdf(base64, maxPages = 50, preExtractedText = null)
         return resp.json();
     }
 
-    // 2. 스캔본 모드: PDF 자체를 Claude 비전으로 전달
+    // 2. 스캔본 모드: PDF 자체를 Claude 비전으로 전달 (최대 20페이지로 제한)
+    const VISION_PAGE_LIMIT = 20;
     let pdfBase64 = base64;
     const totalPages = await _getPdfPageCount(base64).catch(() => 0);
-    if (totalPages > 100 && window.PDFLib?.PDFDocument) {
-        // pdf-lib이 로드된 경우 앞 100페이지만 추출
+    if (totalPages > VISION_PAGE_LIMIT && window.PDFLib?.PDFDocument) {
         try {
             const binary = atob(base64);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
             const src = await window.PDFLib.PDFDocument.load(bytes);
             const dst = await window.PDFLib.PDFDocument.create();
-            const copied = await dst.copyPages(src, Array.from({ length: 100 }, (_, i) => i));
+            const copied = await dst.copyPages(src, Array.from({ length: VISION_PAGE_LIMIT }, (_, i) => i));
             copied.forEach(p => dst.addPage(p));
             const trimmed = await dst.save();
-            pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(trimmed)));
+            // 대용량 배열 spread 대신 루프로 btoa 변환 (스택 오버플로우 방지)
+            let bin = '';
+            const chunk = 8192;
+            for (let i = 0; i < trimmed.length; i += chunk) {
+                bin += String.fromCharCode(...trimmed.subarray(i, i + chunk));
+            }
+            pdfBase64 = btoa(bin);
         } catch (e) { /* 실패 시 원본 그대로 사용 */ }
     }
 
