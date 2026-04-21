@@ -6499,7 +6499,7 @@ async function submitContractForm() {
 // ── 약관 PDF 업로드 처리 ─────────────────────────────────────
 
 // PDF.js로 텍스트 추출 (바이너리 통째 전송 대신 → 토큰 90% 절감)
-async function _pdfBase64ToText(base64) {
+async function _ensurePdfjsLib() {
     if (!window.pdfjsLib) {
         await new Promise((resolve, reject) => {
             const s = document.createElement('script');
@@ -6510,13 +6510,26 @@ async function _pdfBase64ToText(base64) {
         window.pdfjsLib.GlobalWorkerOptions.workerSrc =
             'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
+}
+
+async function _getPdfPageCount(base64) {
+    await _ensurePdfjsLib();
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     const pdf = await window.pdfjsLib.getDocument({ data: bytes }).promise;
-    const maxPages = Math.min(pdf.numPages, 40);
+    return pdf.numPages;
+}
+
+async function _pdfBase64ToText(base64, maxPages = 50) {
+    await _ensurePdfjsLib();
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const pdf = await window.pdfjsLib.getDocument({ data: bytes }).promise;
+    const limit = Math.min(pdf.numPages, maxPages);
     let text = '';
-    for (let p = 1; p <= maxPages; p++) {
+    for (let p = 1; p <= limit; p++) {
         const page = await pdf.getPage(p);
         const content = await page.getTextContent();
         text += content.items.map(i => i.str).join(' ') + '\n';
@@ -6524,17 +6537,54 @@ async function _pdfBase64ToText(base64) {
     return text.slice(0, 24000); // ~8000토큰 상한
 }
 
-async function _extractClausePdf(base64) {
-    const pdfText = await _pdfBase64ToText(base64);
-    if (!pdfText || pdfText.trim().length < 100) {
-        throw new Error('PDF 텍스트 추출 실패 (스캔본이거나 손상된 파일)');
+async function _extractClausePdf(base64, maxPages = 50, preExtractedText = null) {
+    // 1. 텍스트 확인 (미리 추출된 텍스트가 있으면 재사용)
+    let text = preExtractedText;
+    if (text === null) {
+        try {
+            text = await _pdfBase64ToText(base64, maxPages);
+        } catch (e) { text = ''; }
     }
-    return apiFetch('/api/messages', {
-        model: 'claude-haiku-4-5-20251001', max_tokens: 1500,
-        messages: [{ role: 'user', content:
-            `다음 보험약관 텍스트에서 보험금 지급사유와 면책조항만 JSON으로 추출.\n반드시 JSON만 출력할 것 (설명 금지).\n{"doc_name":"보험사+상품명","chunks":[{"section":"조항명","content":"내용(100자이내)"}]}\n\n${pdfText}`
-        }]
+
+    const token = getToken();
+    const headers = { 'Content-Type': 'application/json', 'x-access-token': token };
+
+    if (text && text.trim().length >= 100) {
+        // 텍스트 모드: 추출된 텍스트 전달
+        const resp = await fetch('/api/clause-extract', {
+            method: 'POST', headers,
+            body: JSON.stringify({ text: text.substring(0, 50000) }),
+        });
+        if (resp.status === 429) throw new Error('요청 한도 초과(429): 잠시 후 다시 시도해주세요.');
+        if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error || `HTTP ${resp.status}`); }
+        return resp.json();
+    }
+
+    // 2. 스캔본 모드: PDF 자체를 Claude 비전으로 전달
+    let pdfBase64 = base64;
+    const totalPages = await _getPdfPageCount(base64).catch(() => 0);
+    if (totalPages > 100 && window.PDFLib?.PDFDocument) {
+        // pdf-lib이 로드된 경우 앞 100페이지만 추출
+        try {
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const src = await window.PDFLib.PDFDocument.load(bytes);
+            const dst = await window.PDFLib.PDFDocument.create();
+            const copied = await dst.copyPages(src, Array.from({ length: 100 }, (_, i) => i));
+            copied.forEach(p => dst.addPage(p));
+            const trimmed = await dst.save();
+            pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(trimmed)));
+        } catch (e) { /* 실패 시 원본 그대로 사용 */ }
+    }
+
+    const resp = await fetch('/api/clause-extract', {
+        method: 'POST', headers,
+        body: JSON.stringify({ pdf: pdfBase64 }),
     });
+    if (resp.status === 429) throw new Error('요청 한도 초과(429): 잠시 후 다시 시도해주세요.');
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error || `HTTP ${resp.status}`); }
+    return resp.json();
 }
 
 async function handleClausePdfUploadMultiple(files) {
@@ -6557,23 +6607,38 @@ async function handleClausePdfUploadMultiple(files) {
                 r.onerror = rej;
                 r.readAsDataURL(file);
             });
+
+            // 페이지 수 확인
+            const totalPages = await _getPdfPageCount(base64);
+            const PAGE_LIMIT = 50;
+            if (totalPages > PAGE_LIMIT) {
+                statusEl.innerHTML += `<br><span style="color:#f59e0b;">⚠️ ${file.name} (${totalPages}p): 분량이 많아 앞 ${PAGE_LIMIT}페이지만 처리합니다</span>`;
+            }
+
+            // 텍스트 추출 시도 (스캔본 감지 겸용)
+            const effectivePages = Math.min(totalPages, PAGE_LIMIT);
+            const extractedText = await _pdfBase64ToText(base64, effectivePages).catch(() => '');
+            if (!extractedText || extractedText.trim().length < 100) {
+                statusEl.innerHTML += `<br><span style="color:#6366f1;">🔍 이미지 PDF 감지 — Claude 비전으로 처리합니다</span>`;
+            }
+
             let data;
             try {
-                data = await _extractClausePdf(base64);
+                data = await _extractClausePdf(base64, effectivePages, extractedText);
             } catch(e) {
                 if (e.message.includes('429')) {
                     statusEl.innerHTML += `<br><span style="color:#f59e0b;">⚠️ Rate limit — 15초 후 재시도...</span>`;
                     await new Promise(r => setTimeout(r, 15000));
-                    data = await _extractClausePdf(base64);
+                    data = await _extractClausePdf(base64, effectivePages, extractedText);
                 } else { throw e; }
             }
-            const raw = data.content?.[0]?.text || '';
-            const cleaned = raw.replace(/```json|```/g, '').trim();
-            // JSON이 아닌 자연어 응답(죄송합니다 등) 처리
-            if (!cleaned.startsWith('{')) throw new Error('JSON 응답 없음 — 약관 텍스트 인식 불가');
-            const parsed = JSON.parse(cleaned);
-            allParsed.push(parsed);
-            statusEl.innerHTML += `<br><span style="color:#16a34a;">✅ ${parsed.doc_name}: ${parsed.chunks.length}개 조항</span>`;
+            // _extractClausePdf는 서버에서 이미 파싱된 JSON 객체를 반환함
+            if (!data || !data.doc_name || !Array.isArray(data.chunks)) {
+                throw new Error('약관 구조 인식 불가 — doc_name/chunks 누락');
+            }
+            allParsed.push(data);
+            const pageInfo = totalPages > PAGE_LIMIT ? ` (${PAGE_LIMIT}/${totalPages}p)` : ` (${totalPages}p)`;
+            statusEl.innerHTML += `<br><span style="color:#16a34a;">✅ ${data.doc_name}: ${data.chunks.length}개 조항${pageInfo}</span>`;
         } catch(e) {
             statusEl.innerHTML += `<br><span style="color:#dc2626;">❌ ${file.name}: ${e.message}</span>`;
         }
