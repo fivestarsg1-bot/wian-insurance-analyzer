@@ -3176,18 +3176,69 @@ async function handleKDBUpload(file) {
     };
     setP(true, 'PDF 읽는 중…', 10);
     try {
-        const { text, pages } = await extractPDFText(file, (p, total) =>
-            setP(true, `텍스트 추출 중… (${p}/${total}페이지)`, Math.round(10 + p / total * 70))
-        );
-        if (!text.trim() || text.length < 30) throw new Error('PDF에서 텍스트를 읽을 수 없습니다.');
+        let finalText = '';
+        let finalName = name;
+        let pages = 0;
+
+        try {
+            const result = await extractPDFText(file, (p, total) =>
+                setP(true, `텍스트 추출 중… (${p}/${total}페이지)`, Math.round(10 + p / total * 50))
+            );
+            finalText = result.text;
+            pages = result.pages;
+        } catch(_) {}
+
+        if (!finalText.trim() || finalText.length < 30) {
+            // 스캔본 폴백: PDF.js로 JPEG 렌더링 → Claude 비전
+            setP(true, '스캔본 감지 — 비전 모드로 처리 중…', 40);
+            const base64 = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = () => res(r.result.split(',')[1]);
+                r.onerror = rej;
+                r.readAsDataURL(file);
+            });
+            await _ensurePdfjsLib();
+            const binArr = atob(base64);
+            const bytes = new Uint8Array(binArr.length);
+            for (let i = 0; i < binArr.length; i++) bytes[i] = binArr.charCodeAt(i);
+            const pdfDoc = await window.pdfjsLib.getDocument({ data: bytes }).promise;
+            const numPages = Math.min(pdfDoc.numPages, 10);
+            const images = [];
+            const canvas = document.createElement('canvas');
+            const ctx2d = canvas.getContext('2d');
+            for (let p = 1; p <= numPages; p++) {
+                setP(true, `페이지 렌더링 중… (${p}/${numPages})`, Math.round(40 + p / numPages * 25));
+                const pg = await pdfDoc.getPage(p);
+                const vp = pg.getViewport({ scale: 1.5 });
+                canvas.width = vp.width; canvas.height = vp.height;
+                await pg.render({ canvasContext: ctx2d, viewport: vp }).promise;
+                images.push(canvas.toDataURL('image/jpeg', 0.75).split(',')[1]);
+            }
+            setP(true, 'Claude 비전으로 약관 추출 중…', 70);
+            const token = sessionStorage.getItem('access_token') || '';
+            const resp = await fetch('/api/clause-extract', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-access-token': token },
+                body: JSON.stringify({ images }),
+            });
+            if (!resp.ok) {
+                const e = await resp.json().catch(() => ({}));
+                throw new Error(e.error || `서버 오류 ${resp.status}`);
+            }
+            const parsed = await resp.json();
+            finalName = parsed.doc_name || name;
+            finalText = parsed.chunks.map(c => `[${c.section}]\n${c.content}`).join('\n\n');
+            pages = numPages;
+        }
+
         setP(true, 'DB에 저장 중…', 85);
         const id = 'kdb_' + Date.now();
-        const n  = await KDB.addDocument(id, name, text);
+        const n  = await KDB.addDocument(id, finalName, finalText);
         setP(false);
-        toast(`✓ "${name}" 저장 완료 (${n}개 섹션, ${pages}페이지)`);
+        toast(`✓ "${finalName}" 저장 완료 (${n}개 섹션, ${pages}페이지)`);
         renderKDBList();
-        const autoRows = detectSurgTableFromText(text);
-        if (autoRows.length) showSurgAutoBanner(autoRows, name);
+        const autoRows = detectSurgTableFromText(finalText);
+        if (autoRows.length) showSurgAutoBanner(autoRows, finalName);
     } catch (err) {
         setP(false);
         toast('⚠ ' + err.message.split('\n')[0]);
