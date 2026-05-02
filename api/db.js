@@ -36,13 +36,19 @@ module.exports = async (req, res) => {
         body = raw || undefined;
     }
 
-    const sbRes = await fetch(url, {
-        method:  req.method,
-        headers,
-        body,
-    });
+    try {
+        const sbRes = await fetch(url, {
+            method:  req.method,
+            headers,
+            body,
+        });
 
-    if (sbRes.status === 204) return res.status(204).end();
-    const data = await sbRes.json();
-    res.status(sbRes.status).json(data);
+        if (sbRes.status === 204) return res.status(204).end();
+        const text = await sbRes.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = { error: text }; }
+        res.status(sbRes.status).json(data);
+    } catch (err) {
+        res.status(502).json({ error: `Supabase 연결 오류: ${err.message}` });
+    }
 };
